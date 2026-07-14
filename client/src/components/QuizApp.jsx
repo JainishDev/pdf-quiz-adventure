@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo, useTransition, memo } from "react";
 import { sfx, setMuted, isMuted } from "./sfx.js";
-import { loadProfile, recordQuizResult, levelFromXP, badgeLabel } from "./trainerProfile.js";
+import { loadProfile, recordQuizResult, levelFromXP, badgeLabel, spendXP } from "./trainerProfile.js";
 import { burstConfetti } from "./confetti.js";
 import { pickRival, battleIntroLine, hitLine, missLine, victoryLine, defeatLine } from "./rivalBattle.js";
 
@@ -18,6 +18,17 @@ const TIME_PER_QUESTION = 20;
 const XP_BY_DIFFICULTY = { easy: 10, medium: 20, hard: 30 };
 const FREEZE_BONUS_SECONDS = 10;
 const STARTING_POWERUPS = { fiftyFifty: 2, skip: 2, freeze: 2, hint: 1 };
+const QUESTION_TYPES = [
+  { id: "mixed", label: "MIXED" },
+  { id: "mcq", label: "MCQ" },
+  { id: "true_false", label: "TRUE/FALSE" },
+];
+const MODIFIER_SHOP = [
+  { id: "fiftyFifty", label: "+1 50/50", icon: "🔀", cost: 80, penalty: 2 },
+  { id: "freeze", label: "+1 FREEZE", icon: "❄️", cost: 70, penalty: 2 },
+  { id: "skip", label: "+1 SKIP", icon: "⏭", cost: 110, penalty: 3 },
+  { id: "hint", label: "+1 HINT", icon: "💡", cost: 60, penalty: 1 },
+];
 const THEME_KEY = "pdfQuizAdventure.theme.v1";
 const LEADERBOARD_KEY = "pdfQuizAdventure.leaderboard.v1";
 const DAILY_STREAK_KEY = "pdfQuizAdventure.dailyStreak.v1";
@@ -78,12 +89,13 @@ function getPlayerId() {
 function loadLocalLeaderboard() {
   return ls.get(LEADERBOARD_KEY, []);
 }
-function saveLocalLeaderboardEntry(name, score, total, xp, title) {
+function saveLocalLeaderboardEntry(name, score, total, xp, title, modifierPenalty = 0) {
   const board = loadLocalLeaderboard();
   const pct = Math.round((score / total) * 100);
-  const entry = { name, score, total, pct, xp, title: title?.slice(0, 28) || "Quiz", date: Date.now() };
+  const rankPct = Math.max(0, pct - modifierPenalty);
+  const entry = { name, score, total, pct, rankPct, modifierPenalty, xp, title: title?.slice(0, 28) || "Quiz", date: Date.now() };
   const updated = [entry, ...board]
-    .sort((a, b) => b.pct - a.pct || b.xp - a.xp || b.date - a.date)
+    .sort((a, b) => (b.rankPct ?? b.pct) - (a.rankPct ?? a.pct) || b.xp - a.xp || b.date - a.date)
     .slice(0, 50);
   ls.set(LEADERBOARD_KEY, updated);
   return updated;
@@ -101,19 +113,19 @@ async function loadLeaderboard() {
   }
 }
 
-async function saveLeaderboardEntry(name, score, total, xp, title) {
+async function saveLeaderboardEntry(name, score, total, xp, title, modifierPenalty = 0) {
   const playerId = getPlayerId();
   try {
     const res = await fetch(`${API_BASE}/api/leaderboard`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playerId, name, score, total, xp, title }),
+      body: JSON.stringify({ playerId, name, score, total, xp, title, modifierPenalty }),
     });
     if (!res.ok) throw new Error("bad response");
     const data = await res.json();
     return data.leaderboard || [];
   } catch {
-    return saveLocalLeaderboardEntry(name, score, total, xp, title); // offline fallback
+    return saveLocalLeaderboardEntry(name, score, total, xp, title, modifierPenalty); // offline fallback
   }
 }
 
@@ -312,7 +324,7 @@ const LeaderboardPanel = memo(function LeaderboardPanel({ open, leaderboard, onC
           leaderboard.slice(0, 10).map((e, i) => (
             <div key={i} className={`stat-row leaderboard-row ${i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : ""}`}>
               <span>{i === 0 ? "👑" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`} {e.name}</span>
-              <span>{e.pct}% (+{e.xp}xp)</span>
+              <span>{e.pct}%{e.modifierPenalty ? ` (-${e.modifierPenalty})` : ""} (+{e.xp}xp)</span>
             </div>
           ))
         )}
@@ -337,6 +349,7 @@ export default function QuizApp() {
   const [dragging, setDragging] = useState(false);
   const [count, setCount] = useState(10);
   const [difficulty, setDifficulty] = useState("mixed");
+  const [questionType, setQuestionType] = useState("mixed");
   const [error, setError] = useState("");
   const [quiz, setQuiz] = useState(null);
   const [loadingLine, setLoadingLine] = useState(LOADING_LINES[0]);
@@ -359,6 +372,9 @@ export default function QuizApp() {
   const [shake, setShake] = useState(false);
   const [sparkles, setSparkles] = useState([]);
   const [powerups, setPowerups] = useState({ ...STARTING_POWERUPS });
+  const [runModifiers, setRunModifiers] = useState({ fiftyFifty: 0, skip: 0, freeze: 0, hint: 0 });
+  const [modifierPenalty, setModifierPenalty] = useState(0);
+  const [activeModifierPenalty, setActiveModifierPenalty] = useState(0);
   const [eliminated, setEliminated] = useState([]);
   const [fiftyUsedFor, setFiftyUsedFor] = useState(new Set());
   const [homeConfirmOpen, setHomeConfirmOpen] = useState(false);
@@ -416,6 +432,19 @@ export default function QuizApp() {
   const wipeTimeoutRef = useRef(null);
 
   const stars = useStars(36);
+
+  const buyModifier = (item) => {
+    const result = spendXP(item.cost);
+    if (!result.ok) {
+      showPopup(`NEED ${item.cost} XP FOR ${item.label}`, 1800);
+      sfx.wrong();
+      return;
+    }
+    setRunModifiers((m) => ({ ...m, [item.id]: (m[item.id] || 0) + 1 }));
+    setModifierPenalty((p) => p + item.penalty);
+    showPopup(`${item.icon} ${item.label} READY (-${item.penalty}% RANK)`, 1800);
+    sfx.badge?.();
+  };
 
   const prefersReducedMotion = () =>
     typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -652,7 +681,7 @@ export default function QuizApp() {
       formData.append("pdf", file);
       formData.append("count", String(count));
       formData.append("difficulty", difficulty);
-      formData.append("questionType", "mixed");
+      formData.append("questionType", questionType);
 
       const res = await fetch("/api/quiz/generate", {
         method: "POST",
@@ -678,7 +707,15 @@ export default function QuizApp() {
       setSpeedBonus(0);
       setTotalTimeUsed(0);
       setQuestionTimings([]);
-      setPowerups({ ...STARTING_POWERUPS });
+      setPowerups({
+        fiftyFifty: STARTING_POWERUPS.fiftyFifty + runModifiers.fiftyFifty,
+        skip: STARTING_POWERUPS.skip + runModifiers.skip,
+        freeze: STARTING_POWERUPS.freeze + runModifiers.freeze,
+        hint: STARTING_POWERUPS.hint + runModifiers.hint,
+      });
+      setActiveModifierPenalty(modifierPenalty);
+      setRunModifiers({ fiftyFifty: 0, skip: 0, freeze: 0, hint: 0 });
+      setModifierPenalty(0);
       setFiftyUsedFor(new Set());
       setShared(false);
       setHintText(null);
@@ -862,7 +899,7 @@ export default function QuizApp() {
 
     // Save to leaderboard if player has name
     const name = playerName || "TRAINER";
-    saveLeaderboardEntry(name, summary.correct, summary.total, xp, quiz.title).then(setLeaderboard);
+    saveLeaderboardEntry(name, summary.correct, summary.total, xp, quiz.title, activeModifierPenalty).then(setLeaderboard);
 
     const pct = Math.round((summary.correct / summary.total) * 100);
     if (pct === 100) {
@@ -1186,6 +1223,22 @@ export default function QuizApp() {
               </div>
             </div>
 
+            <div style={{ marginTop: 16 }}>
+              <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>QUESTION TYPE</label>
+              <div className="segmented-grid question-type-grid">
+                {QUESTION_TYPES.map((t) => (
+                  <button
+                    key={t.id}
+                    className={`pixel-btn ${questionType === t.id ? "selected" : ""}`}
+                    style={{ fontSize: 9, padding: "9px 6px", textAlign: "center" }}
+                    onClick={() => { setQuestionType(t.id); sfx.uiBlip(); }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Practice Mode toggle */}
             <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 10 }}>
               <button
@@ -1205,6 +1258,27 @@ export default function QuizApp() {
                 <span className="badge-tag">⏭ SKIP x{STARTING_POWERUPS.skip}</span>
                 <span className="badge-tag">💡 HINT x{STARTING_POWERUPS.hint}</span>
               </div>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>
+                MODIFIER SHOP · RANK -{modifierPenalty}%
+              </label>
+              <div className="shop-grid">
+                {MODIFIER_SHOP.map((item) => (
+                  <button key={item.id} className="pixel-btn shop-btn" onClick={() => buyModifier(item)}>
+                    <span>{item.icon} {item.label}</span>
+                    <span>{item.cost}XP · -{item.penalty}%</span>
+                  </button>
+                ))}
+              </div>
+              {Object.values(runModifiers).some(Boolean) && (
+                <div className="badge-wrap bag-wrap">
+                  {MODIFIER_SHOP.filter((item) => runModifiers[item.id] > 0).map((item) => (
+                    <span key={item.id} className="badge-tag">{item.icon} x{runModifiers[item.id]}</span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {error && <div className="error-box">⚠ {error}</div>}

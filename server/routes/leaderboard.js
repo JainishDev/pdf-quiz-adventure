@@ -58,31 +58,34 @@ router.get("/", async (req, res) => {
 });
 
 // ─── POST /api/leaderboard — submit/update a player's best score ─────────────
-// body: { playerId, name, score, total, xp, title }
+// body: { playerId, name, score, total, xp, title, modifierPenalty }
 router.post("/", async (req, res) => {
   if (!redisConfigured()) {
     return res.status(503).json({ error: "Leaderboard backend not configured (missing Upstash env vars)" });
   }
   try {
     const { playerId, name, score, total, xp, title } = req.body || {};
+    const modifierPenalty = Math.min(Math.max(Number(req.body?.modifierPenalty) || 0, 0), 40);
     if (!playerId || typeof score !== "number" || typeof total !== "number") {
       return res.status(400).json({ error: "playerId, score, total are required" });
     }
 
     const pct = total > 0 ? Math.round((score / total) * 100) : 0;
+    const rankPct = Math.max(0, pct - modifierPenalty);
     const safeName = String(name || "Trainer").slice(0, 20);
     const safeTitle = String(title || "Quiz").slice(0, 28);
 
     // Only overwrite this player's entry if the new score is a new best (rank by pct, then xp)
     const existingRaw = await redis("GET", ENTRY_PREFIX + playerId);
     const existing = existingRaw ? JSON.parse(existingRaw) : null;
-    const isBetter = !existing || pct > existing.pct || (pct === existing.pct && xp > existing.xp);
+    const existingRankPct = existing?.rankPct ?? existing?.pct ?? 0;
+    const isBetter = !existing || rankPct > existingRankPct || (rankPct === existingRankPct && xp > existing.xp);
 
     if (isBetter) {
-      const entry = { playerId, name: safeName, score, total, pct, xp, title: safeTitle, date: Date.now() };
+      const entry = { playerId, name: safeName, score, total, pct, rankPct, modifierPenalty, xp, title: safeTitle, date: Date.now() };
       await redis("SET", ENTRY_PREFIX + playerId, JSON.stringify(entry));
       // Composite sort score: pct dominates, xp breaks ties, both packed into one number
-      const sortScore = pct * 1_000_000 + Math.min(xp, 999_999);
+      const sortScore = rankPct * 1_000_000 + Math.min(xp, 999_999);
       await redis("ZADD", BOARD_KEY, sortScore, playerId);
     }
 
