@@ -1381,105 +1381,134 @@ export default function QuizApp() {
               />
             </div>
 
-            <div style={{ marginTop: 18 }}>
-              <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>ADVANCED MODE</label>
-              <div className="segmented-grid">
-                <button className={`pixel-btn ${runLabel === "ADVENTURE" ? "selected" : ""}`} onClick={() => applyPreset("standard")}>
-                  STANDARD
+            <div className="quick-summary">
+              <span className="badge-tag">{runLabel}</span>
+              <span className="badge-tag">{count} Q</span>
+              <span className="badge-tag">{difficulty.toUpperCase()}</span>
+              <span className="badge-tag">{QUESTION_TYPES.find((t) => t.id === questionType)?.label}</span>
+              {practiceMode && <span className="badge-tag">PRACTICE</span>}
+              {modifierPenalty > 0 && <span className="badge-tag">RANK -{modifierPenalty}%</span>}
+            </div>
+
+            <details className="settings-drawer" open>
+              <summary>QUIZ SETUP</summary>
+              <div className="drawer-body">
+                <div>
+                  <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>MODE</label>
+                  <div className="segmented-grid">
+                    <button className={`pixel-btn ${runLabel === "ADVENTURE" ? "selected" : ""}`} onClick={() => applyPreset("standard")}>
+                      STANDARD
+                    </button>
+                    <button className={`pixel-btn ${runLabel === "BOSS MODE" ? "selected" : ""}`} onClick={() => applyPreset("boss")}>
+                      BOSS
+                    </button>
+                    <button className={`pixel-btn ${runLabel === "DAILY CHALLENGE" ? "selected" : ""}`} onClick={() => applyPreset("daily")}>
+                      DAILY
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>
+                    QUESTIONS: {count}
+                  </label>
+                  <input
+                    type="range" min="5" max="20" value={count}
+                    onChange={(e) => setCount(Number(e.target.value))}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>DIFFICULTY</label>
+                  <div className="segmented-grid">
+                    {["easy", "medium", "hard", "mixed"].map((d) => (
+                      <button
+                        key={d}
+                        className={`pixel-btn ${difficulty === d ? "selected" : ""}`}
+                        style={{ fontSize: 9, padding: "9px 6px", textAlign: "center" }}
+                        onClick={() => { setDifficulty(d); sfx.uiBlip(); }}
+                      >
+                        {d.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>QUESTION TYPE</label>
+                  <div className="segmented-grid question-type-grid">
+                    {QUESTION_TYPES.map((t) => (
+                      <button
+                        key={t.id}
+                        className={`pixel-btn ${questionType === t.id ? "selected" : ""}`}
+                        style={{ fontSize: 9, padding: "9px 6px", textAlign: "center" }}
+                        onClick={() => { setQuestionType(t.id); sfx.uiBlip(); }}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  className={`pixel-btn ${practiceMode ? "selected" : ""}`}
+                  style={{ width: "100%", marginTop: 16, fontSize: 9, padding: "9px 10px" }}
+                  onClick={() => { setPracticeMode((v) => !v); sfx.uiBlip(); }}
+                >
+                  {practiceMode ? "✓ PRACTICE MODE (no timer)" : "PRACTICE MODE"}
                 </button>
-                <button className={`pixel-btn ${runLabel === "BOSS MODE" ? "selected" : ""}`} onClick={() => applyPreset("boss")}>
-                  BOSS MODE
-                </button>
-                <button className={`pixel-btn ${runLabel === "DAILY CHALLENGE" ? "selected" : ""}`} onClick={() => applyPreset("daily")}>
-                  DAILY
-                </button>
               </div>
-            </div>
+            </details>
 
-            <div style={{ marginTop: 18 }}>
-              <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>
-                QUESTIONS: {count}
-              </label>
-              <input
-                type="range" min="5" max="20" value={count}
-                onChange={(e) => setCount(Number(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </div>
+            <details className="settings-drawer">
+              <summary>EXTRAS & SHOP</summary>
+              <div className="drawer-body">
+                <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>POWER-UPS THIS RUN</label>
+                <div className="badge-wrap">
+                  <span className="badge-tag">🔀 50/50 x{basePowerups.fiftyFifty}</span>
+                  <span className="badge-tag">❄️ FREEZE x{basePowerups.freeze}</span>
+                  <span className="badge-tag">⏭ SKIP x{basePowerups.skip}</span>
+                  <span className="badge-tag">💡 HINT x{basePowerups.hint}</span>
+                </div>
 
-            <div style={{ marginTop: 16 }}>
-              <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>DIFFICULTY</label>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {["easy", "medium", "hard", "mixed"].map((d) => (
-                  <button
-                    key={d}
-                    className={`pixel-btn ${difficulty === d ? "selected" : ""}`}
-                    style={{ flex: "1 1 auto", fontSize: 10, padding: "9px 6px" }}
-                    onClick={() => { setDifficulty(d); sfx.uiBlip(); }}
-                  >
-                    {d.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 16 }}>
-              <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>QUESTION TYPE</label>
-              <div className="segmented-grid question-type-grid">
-                {QUESTION_TYPES.map((t) => (
-                  <button
-                    key={t.id}
-                    className={`pixel-btn ${questionType === t.id ? "selected" : ""}`}
-                    style={{ fontSize: 9, padding: "9px 6px", textAlign: "center" }}
-                    onClick={() => { setQuestionType(t.id); sfx.uiBlip(); }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Practice Mode toggle */}
-            <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 10 }}>
-              <button
-                className={`pixel-btn ${practiceMode ? "selected" : ""}`}
-                style={{ fontSize: 9, padding: "9px 10px" }}
-                onClick={() => { setPracticeMode((v) => !v); sfx.uiBlip(); }}
-              >
-                {practiceMode ? "✓ PRACTICE MODE (no timer)" : "PRACTICE MODE"}
-              </button>
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>POWER-UPS THIS RUN</label>
-              <div style={{ display: "flex", gap: 8, fontSize: 9, flexWrap: "wrap" }}>
-                <span className="badge-tag">🔀 50/50 x{STARTING_POWERUPS.fiftyFifty}</span>
-                <span className="badge-tag">❄️ FREEZE x{STARTING_POWERUPS.freeze}</span>
-                <span className="badge-tag">⏭ SKIP x{STARTING_POWERUPS.skip}</span>
-                <span className="badge-tag">💡 HINT x{STARTING_POWERUPS.hint}</span>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 16 }}>
-              <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>
-                MODIFIER SHOP · RANK -{modifierPenalty}%
-              </label>
-              <div className="shop-grid">
-                {MODIFIER_SHOP.map((item) => (
-                  <button key={item.id} className="pixel-btn shop-btn" onClick={() => buyModifier(item)}>
-                    <span>{item.icon} {item.label}</span>
-                    <span>{item.cost}XP · -{item.penalty}%</span>
-                  </button>
-                ))}
-              </div>
-              {Object.values(runModifiers).some(Boolean) && (
-                <div className="badge-wrap bag-wrap">
-                  {MODIFIER_SHOP.filter((item) => runModifiers[item.id] > 0).map((item) => (
-                    <span key={item.id} className="badge-tag">{item.icon} x{runModifiers[item.id]}</span>
+                <label style={{ fontSize: 10, display: "block", margin: "16px 0 8px" }}>
+                  MODIFIER SHOP · RANK -{modifierPenalty}%
+                </label>
+                <div className="shop-grid">
+                  {MODIFIER_SHOP.map((item) => (
+                    <button key={item.id} className="pixel-btn shop-btn" onClick={() => buyModifier(item)}>
+                      <span>{item.icon} {item.label}</span>
+                      <span>{item.cost}XP · -{item.penalty}%</span>
+                    </button>
                   ))}
                 </div>
-              )}
-            </div>
+                {Object.values(runModifiers).some(Boolean) && (
+                  <div className="badge-wrap bag-wrap">
+                    {MODIFIER_SHOP.filter((item) => runModifiers[item.id] > 0).map((item) => (
+                      <span key={item.id} className="badge-tag">{item.icon} x{runModifiers[item.id]}</span>
+                    ))}
+                  </div>
+                )}
+
+                {quizLibrary.length > 0 && (
+                  <div style={{ marginTop: 18 }}>
+                    <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>QUIZ LIBRARY</label>
+                    <div className="history-list compact">
+                      {quizLibrary.slice(0, 3).map((entry) => (
+                        <div key={entry.id} className="history-row">
+                          <div>
+                            <div className="history-title">{entry.title?.slice(0, 26) || "Quiz"}</div>
+                            <div className="history-meta">{entry.questions.length} questions</div>
+                          </div>
+                          <button className="pixel-btn" onClick={() => startQuizFromLibrary(entry)}>REPLAY</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </details>
 
             {error && <div className="error-box">⚠ {error}</div>}
 
@@ -1491,24 +1520,6 @@ export default function QuizApp() {
               <span className="menu-cursor">▶</span> GENERATE QUIZ
             </button>
           </div>
-
-          {quizLibrary.length > 0 && (
-            <>
-              <h2 className="section-heading">QUIZ LIBRARY</h2>
-              <p className="section-subheading">Replay generated quizzes without uploading again</p>
-              <div className="history-list">
-                {quizLibrary.slice(0, 4).map((entry) => (
-                  <div key={entry.id} className="history-row">
-                    <div>
-                      <div className="history-title">{entry.title?.slice(0, 30) || "Quiz"}</div>
-                      <div className="history-meta">{entry.questions.length} questions · {new Date(entry.date).toLocaleDateString()}</div>
-                    </div>
-                    <button className="pixel-btn" onClick={() => startQuizFromLibrary(entry)}>REPLAY</button>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
 
           <h2 className="section-heading">WHY TRAINERS LOVE IT</h2>
           <p className="section-subheading">What you get every time you generate a quiz</p>

@@ -1501,6 +1501,42 @@ body {
 
 /* ── Advanced Home Features ───────────────────────────────────────────────── */
 .compact-panel { overflow: hidden; }
+.quick-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.settings-drawer {
+  margin-top: 12px;
+  background: var(--gb-card-bg-alt);
+  border: 3px solid var(--gb-dark);
+  box-shadow: 3px 3px 0 0 var(--gb-navy);
+}
+.settings-drawer summary {
+  list-style: none;
+  padding: 12px;
+  font-size: 10px;
+  color: var(--gb-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+.settings-drawer summary::-webkit-details-marker { display: none; }
+.settings-drawer summary::after {
+  content: "+";
+  color: var(--gb-red);
+  font-size: 14px;
+}
+.settings-drawer[open] summary::after {
+  content: "-";
+}
+.drawer-body {
+  border-top: 2px dotted var(--gb-navy);
+  padding: 12px;
+}
 .mode-grid,
 .segmented-grid {
   display: grid;
@@ -1553,6 +1589,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.history-list.compact {
+  gap: 8px;
+}
+.history-list.compact .history-row {
+  padding: 10px;
 }
 .history-row {
   display: flex;
