@@ -1438,12 +1438,65 @@ body {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.badge-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+.badge-card {
+  background: var(--gb-card-bg-alt);
+  border: 3px solid var(--gb-dark);
+  box-shadow: 3px 3px 0 0 var(--gb-navy);
+  padding: 12px 8px;
+  text-align: center;
+}
+.badge-card.locked {
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+.badge-card span,
+.badge-card strong,
+.badge-card small {
+  display: block;
+}
+.badge-card span { font-size: 20px; margin-bottom: 8px; }
+.badge-card strong { font-size: 8px; line-height: 1.6; }
+.badge-card small { font-size: 7px; margin-top: 6px; opacity: 0.7; }
+.flashcard-box { text-align: center; }
+.flashcard {
+  width: 100%;
+  min-height: 220px;
+  margin-top: 14px;
+  background: var(--gb-card-bg-alt);
+  border: 4px solid var(--gb-dark);
+  box-shadow: 4px 4px 0 0 var(--gb-navy);
+  color: var(--gb-text);
+  font-family: "Press Start 2P", monospace;
+  font-size: 13px;
+  line-height: 1.9;
+  padding: 20px;
+  text-align: center;
+}
+.flashcard strong,
+.flashcard small {
+  display: block;
+}
+.flashcard strong {
+  color: var(--gb-green);
+  margin-bottom: 12px;
+}
+.flashcard small {
+  font-size: 9px;
+  line-height: 1.8;
+}
 
 @media (max-width: 480px) {
   .saved-review-row {
     align-items: flex-start;
     flex-direction: column;
   }
+  .flashcard { min-height: 190px; font-size: 11px; }
+  .badge-gallery { grid-template-columns: 1fr 1fr; }
 }
 
 /* ── Advanced Home Features ───────────────────────────────────────────────── */

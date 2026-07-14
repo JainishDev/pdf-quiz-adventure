@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo, useTransition, memo } from "react";
 import { sfx, setMuted, isMuted } from "./sfx.js";
-import { loadProfile, recordQuizResult, levelFromXP, badgeLabel, spendXP } from "./trainerProfile.js";
+import { loadProfile, recordQuizResult, levelFromXP, badgeLabel, allBadges, spendXP } from "./trainerProfile.js";
 import { burstConfetti } from "./confetti.js";
 import { pickRival, battleIntroLine, hitLine, missLine, victoryLine, defeatLine } from "./rivalBattle.js";
 
@@ -18,6 +18,7 @@ const TIME_PER_QUESTION = 20;
 const XP_BY_DIFFICULTY = { easy: 10, medium: 20, hard: 30 };
 const FREEZE_BONUS_SECONDS = 10;
 const STARTING_POWERUPS = { fiftyFifty: 2, skip: 2, freeze: 2, hint: 1 };
+const EMPTY_POWERUPS = { fiftyFifty: 0, skip: 0, freeze: 0, hint: 0 };
 const QUESTION_TYPES = [
   { id: "mixed", label: "MIXED" },
   { id: "mcq", label: "MCQ" },
@@ -33,6 +34,8 @@ const THEME_KEY = "pdfQuizAdventure.theme.v1";
 const LEADERBOARD_KEY = "pdfQuizAdventure.leaderboard.v1";
 const DAILY_STREAK_KEY = "pdfQuizAdventure.dailyStreak.v1";
 const SAVED_REVIEWS_KEY = "pdfQuizAdventure.savedReviews.v1";
+const QUIZ_LIBRARY_KEY = "pdfQuizAdventure.quizLibrary.v1";
+const DAILY_CHALLENGE_KEY = "pdfQuizAdventure.dailyChallenge.v1";
 
 const FEATURES = [
   { icon: "🧠", title: "AI QUESTIONS", desc: "Any PDF becomes a real quiz in seconds" },
@@ -168,6 +171,25 @@ function saveReviewAttempt({ quiz, answers, summary, xp, bestStreak }) {
   };
   const updated = [entry, ...loadSavedReviews()].slice(0, 12);
   ls.set(SAVED_REVIEWS_KEY, updated);
+  return updated;
+}
+
+function loadQuizLibrary() {
+  return ls.get(QUIZ_LIBRARY_KEY, []);
+}
+
+function saveQuizToLibrary(quiz) {
+  if (!quiz?.questions?.length) return loadQuizLibrary();
+  const entry = {
+    id: crypto.randomUUID(),
+    date: Date.now(),
+    title: quiz.title || "Quiz",
+    questions: quiz.questions,
+    usedFallback: quiz.usedFallback,
+    usedOCR: quiz.usedOCR,
+  };
+  const updated = [entry, ...loadQuizLibrary()].slice(0, 10);
+  ls.set(QUIZ_LIBRARY_KEY, updated);
   return updated;
 }
 
@@ -372,9 +394,11 @@ export default function QuizApp() {
   const [shake, setShake] = useState(false);
   const [sparkles, setSparkles] = useState([]);
   const [powerups, setPowerups] = useState({ ...STARTING_POWERUPS });
+  const [basePowerups, setBasePowerups] = useState({ ...STARTING_POWERUPS });
   const [runModifiers, setRunModifiers] = useState({ fiftyFifty: 0, skip: 0, freeze: 0, hint: 0 });
   const [modifierPenalty, setModifierPenalty] = useState(0);
   const [activeModifierPenalty, setActiveModifierPenalty] = useState(0);
+  const [runLabel, setRunLabel] = useState("ADVENTURE");
   const [eliminated, setEliminated] = useState([]);
   const [fiftyUsedFor, setFiftyUsedFor] = useState(new Set());
   const [homeConfirmOpen, setHomeConfirmOpen] = useState(false);
@@ -396,6 +420,9 @@ export default function QuizApp() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [savedReviews, setSavedReviews] = useState(() => loadSavedReviews());
   const [selectedSavedReview, setSelectedSavedReview] = useState(null);
+  const [quizLibrary, setQuizLibrary] = useState(() => loadQuizLibrary());
+  const [flashcardIndex, setFlashcardIndex] = useState(0);
+  const [flashcardFlipped, setFlashcardFlipped] = useState(false);
 
   // Load the shared, cross-device leaderboard on mount
   useEffect(() => {
@@ -444,6 +471,145 @@ export default function QuizApp() {
     setModifierPenalty((p) => p + item.penalty);
     showPopup(`${item.icon} ${item.label} READY (-${item.penalty}% RANK)`, 1800);
     sfx.badge?.();
+  };
+
+  const applyPreset = (preset) => {
+    const shopPenalty = MODIFIER_SHOP.reduce((sum, item) => sum + (runModifiers[item.id] || 0) * item.penalty, 0);
+    if (preset === "boss") {
+      setCount(12);
+      setDifficulty("hard");
+      setQuestionType("mcq");
+      setPracticeMode(false);
+      setBasePowerups({ fiftyFifty: 1, skip: 0, freeze: 0, hint: 1 });
+      setRunLabel("BOSS MODE");
+      setModifierPenalty(shopPenalty + 5);
+      showPopup("BOSS MODE READY: HARD + LIMITED POWER", 1800);
+    } else if (preset === "daily") {
+      const today = new Date().toDateString();
+      const daily = ls.get(DAILY_CHALLENGE_KEY, null);
+      if (daily?.date === today) {
+        showPopup("DAILY CHALLENGE ALREADY SET TODAY", 1800);
+      } else {
+        ls.set(DAILY_CHALLENGE_KEY, { date: today });
+        showPopup("DAILY CHALLENGE READY", 1800);
+      }
+      setCount(8);
+      setDifficulty("mixed");
+      setQuestionType("mixed");
+      setPracticeMode(false);
+      setBasePowerups({ fiftyFifty: 1, skip: 1, freeze: 1, hint: 1 });
+      setRunLabel("DAILY CHALLENGE");
+      setModifierPenalty(shopPenalty + 2);
+    } else {
+      setBasePowerups({ ...STARTING_POWERUPS });
+      setRunLabel("ADVENTURE");
+      setModifierPenalty(shopPenalty);
+      showPopup("STANDARD RUN READY", 1200);
+    }
+    sfx.select();
+  };
+
+  const startQuizFromLibrary = (entry) => {
+    const libraryQuiz = {
+      title: entry.title,
+      questions: entry.questions,
+      usedFallback: entry.usedFallback,
+      usedOCR: entry.usedOCR,
+      replayed: true,
+    };
+    setQuiz(libraryQuiz);
+    setRival(pickRival(entry.title || "Quiz"));
+    setCurrent(0);
+    setSelected(null);
+    setAnswered(false);
+    setScore(0);
+    setAnswers([]);
+    setStreak(0);
+    setBestStreak(0);
+    setXp(0);
+    setSpeedBonus(0);
+    setTotalTimeUsed(0);
+    setQuestionTimings([]);
+    setPowerups({ ...STARTING_POWERUPS });
+    setActiveModifierPenalty(0);
+    setFiftyUsedFor(new Set());
+    setShared(false);
+    setHintText(null);
+    sfx.confirm();
+    startTrans(() => setStage("vs"));
+  };
+
+  const retryWeakTopics = () => {
+    const missed = answers
+      .map((a, i) => ({ a, q: quiz.questions[i] }))
+      .filter(({ a }) => !a.isCorrect)
+      .map(({ q }) => q)
+      .filter(Boolean);
+    if (!missed.length) {
+      showPopup("NO WEAK QUESTIONS TO RETRY", 1600);
+      return;
+    }
+    const retryQuiz = {
+      ...quiz,
+      title: `${quiz.title || "Quiz"} Weak Topic Retry`,
+      questions: missed,
+      retry: true,
+    };
+    setQuiz(retryQuiz);
+    setCurrent(0);
+    setSelected(null);
+    setAnswered(false);
+    setScore(0);
+    setAnswers([]);
+    setStreak(0);
+    setBestStreak(0);
+    setXp(0);
+    setSpeedBonus(0);
+    setTotalTimeUsed(0);
+    setQuestionTimings([]);
+    setPowerups({ fiftyFifty: 1, skip: 0, freeze: 1, hint: 2 });
+    setActiveModifierPenalty(3);
+    setFiftyUsedFor(new Set());
+    setHintText(null);
+    sfx.confirm();
+    startTrans(() => setStage("quiz"));
+  };
+
+  const openFlashcards = () => {
+    setFlashcardIndex(0);
+    setFlashcardFlipped(false);
+    sfx.select();
+    startTrans(() => setStage("flashcards"));
+  };
+
+  const saveShareCard = () => {
+    if (!quiz) return;
+    const summary = getQuizSummary();
+    const canvas = document.createElement("canvas");
+    canvas.width = 900;
+    canvas.height = 520;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#1a2b3c";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#f8f0d8";
+    ctx.fillRect(36, 36, canvas.width - 72, canvas.height - 72);
+    ctx.strokeStyle = "#d94040";
+    ctx.lineWidth = 10;
+    ctx.strokeRect(54, 54, canvas.width - 108, canvas.height - 108);
+    ctx.fillStyle = "#1a2b3c";
+    ctx.font = "bold 42px monospace";
+    ctx.fillText("PDF QUIZ ADVENTURE", 90, 130);
+    ctx.font = "bold 34px monospace";
+    ctx.fillText(`${summary.correct}/${summary.total} SCORE`, 90, 220);
+    ctx.fillText(`+${xp} XP`, 90, 280);
+    ctx.fillText(`${bestStreak}x BEST STREAK`, 90, 340);
+    ctx.font = "24px monospace";
+    ctx.fillText((quiz.title || "Quiz").slice(0, 42), 90, 410);
+    const link = document.createElement("a");
+    link.download = "pdf-quiz-adventure-result.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+    showPopup("SHARE CARD SAVED", 1600);
   };
 
   const prefersReducedMotion = () =>
@@ -695,6 +861,7 @@ export default function QuizApp() {
 
       setLoadingPct(100);
       setQuiz(data);
+      setQuizLibrary(saveQuizToLibrary(data));
       setRival(pickRival(data.title || file.name));
       setCurrent(0);
       setSelected(null);
@@ -708,10 +875,10 @@ export default function QuizApp() {
       setTotalTimeUsed(0);
       setQuestionTimings([]);
       setPowerups({
-        fiftyFifty: STARTING_POWERUPS.fiftyFifty + runModifiers.fiftyFifty,
-        skip: STARTING_POWERUPS.skip + runModifiers.skip,
-        freeze: STARTING_POWERUPS.freeze + runModifiers.freeze,
-        hint: STARTING_POWERUPS.hint + runModifiers.hint,
+        fiftyFifty: basePowerups.fiftyFifty + runModifiers.fiftyFifty,
+        skip: basePowerups.skip + runModifiers.skip,
+        freeze: basePowerups.freeze + runModifiers.freeze,
+        hint: basePowerups.hint + runModifiers.hint,
       });
       setActiveModifierPenalty(modifierPenalty);
       setRunModifiers({ fiftyFifty: 0, skip: 0, freeze: 0, hint: 0 });
@@ -859,22 +1026,40 @@ export default function QuizApp() {
       ? Math.round(list.reduce((sum, a) => sum + (Number(a.timeUsed) || 0), 0) / list.length)
       : 0;
     const topicMap = new Map();
+    const difficultyMap = new Map();
     list.forEach((a) => {
       const topic = a.topic || "General";
       const item = topicMap.get(topic) || { topic, total: 0, correct: 0 };
       item.total += 1;
       if (a.isCorrect) item.correct += 1;
       topicMap.set(topic, item);
+
+      const difficulty = a.difficulty || "medium";
+      const diff = difficultyMap.get(difficulty) || { difficulty, total: 0, correct: 0 };
+      diff.total += 1;
+      if (a.isCorrect) diff.correct += 1;
+      difficultyMap.set(difficulty, diff);
     });
     const topics = [...topicMap.values()]
       .sort((a, b) => (a.correct / a.total) - (b.correct / b.total))
       .slice(0, 3);
-    return { total, correct, skipped, timedOut, avgTime, topics };
+    const timed = list
+      .map((a, i) => ({ index: i + 1, time: Number(a.timeUsed) || 0, question: a.question }))
+      .filter((a) => a.time > 0);
+    const fastest = timed.length ? timed.reduce((best, item) => item.time < best.time ? item : best, timed[0]) : null;
+    const slowest = timed.length ? timed.reduce((best, item) => item.time > best.time ? item : best, timed[0]) : null;
+    return { total, correct, skipped, timedOut, avgTime, topics, difficulties: [...difficultyMap.values()], fastest, slowest };
   };
 
   const finishQuiz = (finalAnswers = answers) => {
     sfx.levelUp();
     const summary = getQuizSummary(finalAnswers);
+    const earnedXp = runLabel === "BOSS MODE" && summary.correct === summary.total
+      ? xp + 100
+      : runLabel === "DAILY CHALLENGE"
+        ? xp + 30
+        : xp;
+    setXp(earnedXp);
 
     // Update daily streak
     const { streak: ds, wasNewDay } = updateDailyStreak();
@@ -884,13 +1069,13 @@ export default function QuizApp() {
     }
 
     const { profile, leveledUp, newlyUnlocked } = recordQuizResult({
-      xpEarned: xp,
+      xpEarned: earnedXp,
       correct: summary.correct,
       total: summary.total,
       bestStreakThisQuiz: bestStreak,
       title: quiz.title,
     });
-    setSavedReviews(saveReviewAttempt({ quiz, answers: finalAnswers, summary, xp, bestStreak }));
+    setSavedReviews(saveReviewAttempt({ quiz, answers: finalAnswers, summary, xp: earnedXp, bestStreak }));
 
     if (leveledUp || newlyUnlocked.length) {
       setTimeout(() => sfx.badge?.(), 500);
@@ -899,7 +1084,7 @@ export default function QuizApp() {
 
     // Save to leaderboard if player has name
     const name = playerName || "TRAINER";
-    saveLeaderboardEntry(name, summary.correct, summary.total, xp, quiz.title, activeModifierPenalty).then(setLeaderboard);
+    saveLeaderboardEntry(name, summary.correct, summary.total, earnedXp, quiz.title, activeModifierPenalty).then(setLeaderboard);
 
     const pct = Math.round((summary.correct / summary.total) * 100);
     if (pct === 100) {
@@ -1197,6 +1382,21 @@ export default function QuizApp() {
             </div>
 
             <div style={{ marginTop: 18 }}>
+              <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>ADVANCED MODE</label>
+              <div className="segmented-grid">
+                <button className={`pixel-btn ${runLabel === "ADVENTURE" ? "selected" : ""}`} onClick={() => applyPreset("standard")}>
+                  STANDARD
+                </button>
+                <button className={`pixel-btn ${runLabel === "BOSS MODE" ? "selected" : ""}`} onClick={() => applyPreset("boss")}>
+                  BOSS MODE
+                </button>
+                <button className={`pixel-btn ${runLabel === "DAILY CHALLENGE" ? "selected" : ""}`} onClick={() => applyPreset("daily")}>
+                  DAILY
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 18 }}>
               <label style={{ fontSize: 10, display: "block", marginBottom: 8 }}>
                 QUESTIONS: {count}
               </label>
@@ -1291,6 +1491,24 @@ export default function QuizApp() {
               <span className="menu-cursor">▶</span> GENERATE QUIZ
             </button>
           </div>
+
+          {quizLibrary.length > 0 && (
+            <>
+              <h2 className="section-heading">QUIZ LIBRARY</h2>
+              <p className="section-subheading">Replay generated quizzes without uploading again</p>
+              <div className="history-list">
+                {quizLibrary.slice(0, 4).map((entry) => (
+                  <div key={entry.id} className="history-row">
+                    <div>
+                      <div className="history-title">{entry.title?.slice(0, 30) || "Quiz"}</div>
+                      <div className="history-meta">{entry.questions.length} questions · {new Date(entry.date).toLocaleDateString()}</div>
+                    </div>
+                    <button className="pixel-btn" onClick={() => startQuizFromLibrary(entry)}>REPLAY</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
           <h2 className="section-heading">WHY TRAINERS LOVE IT</h2>
           <p className="section-subheading">What you get every time you generate a quiz</p>
@@ -1397,6 +1615,10 @@ export default function QuizApp() {
             </div>
           )}
 
+          <button className="pixel-btn" style={{ width: "100%", marginTop: 14 }} onClick={() => { sfx.select(); setStage("badges"); }}>
+            🎖️ BADGE GALLERY
+          </button>
+
           {profile.history.length > 0 && (
             <div style={{ marginTop: 18, textAlign: "left" }}>
               <p style={{ fontSize: 9, marginBottom: 8 }}>RECENT QUIZZES:</p>
@@ -1437,6 +1659,37 @@ export default function QuizApp() {
           </button>
         </div>
         <LeaderboardPanel open={showLeaderboard} leaderboard={leaderboard} onClose={closeLeaderboard} />
+      </div>
+    );
+  }
+
+  // ─── BADGE GALLERY ──────────────────────────────────────────────────────────
+  if (stage === "badges") {
+    const profile = loadProfile();
+    return (
+      <div className="gb-screen" data-theme={theme}>
+        <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <ThemeWipeOverlay wipe={wipe} />
+        <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
+        <div className="pixel-box stage-enter">
+          <h2 style={{ fontSize: 12, marginBottom: 14, textAlign: "center" }}>🎖️ BADGE GALLERY</h2>
+          <div className="badge-gallery">
+            {allBadges().map((b) => {
+              const unlocked = profile.badges.includes(b.id);
+              return (
+                <div key={b.id} className={`badge-card ${unlocked ? "unlocked" : "locked"}`}>
+                  <span>{unlocked ? "🏅" : "🔒"}</span>
+                  <strong>{b.label}</strong>
+                  <small>{unlocked ? "UNLOCKED" : "LOCKED"}</small>
+                </div>
+              );
+            })}
+          </div>
+          <button className="pixel-btn primary" style={{ width: "100%", marginTop: 14 }} onClick={() => { sfx.select(); setStage("trainer"); }}>
+            ◀ BACK TO TRAINER CARD
+          </button>
+        </div>
       </div>
     );
   }
@@ -1682,6 +1935,46 @@ export default function QuizApp() {
     );
   }
 
+  // ─── FLASHCARDS ─────────────────────────────────────────────────────────────
+  if (stage === "flashcards" && quiz) {
+    const card = quiz.questions[flashcardIndex];
+    return (
+      <div className="gb-screen" data-theme={theme}>
+        <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <ThemeWipeOverlay wipe={wipe} />
+        <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
+        <div className="pixel-box stage-enter flashcard-box">
+          <div className="question-meta">
+            <span>CARD {flashcardIndex + 1}/{quiz.questions.length}</span>
+            <span className="badge-tag">{card.topic || card.difficulty || "STUDY"}</span>
+          </div>
+          <button className={`flashcard ${flashcardFlipped ? "flipped" : ""}`} onClick={() => { setFlashcardFlipped((v) => !v); sfx.uiBlip(); }}>
+            {!flashcardFlipped ? (
+              <span>{card.question}</span>
+            ) : (
+              <span>
+                <strong>{card.correctAnswer}</strong>
+                <small>{card.explanation}</small>
+              </span>
+            )}
+          </button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+            <button className="pixel-btn" onClick={() => { setFlashcardIndex((i) => Math.max(0, i - 1)); setFlashcardFlipped(false); }}>
+              ◀ PREV
+            </button>
+            <button className="pixel-btn" onClick={() => { setFlashcardIndex((i) => Math.min(quiz.questions.length - 1, i + 1)); setFlashcardFlipped(false); }}>
+              NEXT ▶
+            </button>
+          </div>
+          <button className="pixel-btn primary" style={{ width: "100%", marginTop: 10 }} onClick={() => { sfx.select(); setStage("result"); }}>
+            BACK TO RESULTS
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ─── RESULT STAGE ─────────────────────────────────────────────────────────────
   if (stage === "result" && quiz) {
     const summary = getQuizSummary();
@@ -1740,6 +2033,18 @@ export default function QuizApp() {
             </div>
           )}
 
+          <div className="explanation-box topic-report">
+            <strong>EXAM REPORT</strong>
+            {summary.difficulties.map((d) => (
+              <div key={d.difficulty} className="topic-row">
+                <span>{d.difficulty.toUpperCase()}</span>
+                <span>{d.correct}/{d.total}</span>
+              </div>
+            ))}
+            {summary.fastest && <div className="topic-row"><span>FASTEST Q{summary.fastest.index}</span><span>{summary.fastest.time}s</span></div>}
+            {summary.slowest && <div className="topic-row"><span>SLOWEST Q{summary.slowest.index}</span><span>{summary.slowest.time}s</span></div>}
+          </div>
+
           {levelUpInfo?.leveledUp && (
             <div className="explanation-box" style={{ marginTop: 14 }}>
               🎉 LEVEL UP! You're now LV.{levelUpInfo.profile.level}!
@@ -1753,6 +2058,15 @@ export default function QuizApp() {
 
           <button className="pixel-btn primary" style={{ width: "100%", marginTop: 18 }} onClick={() => { sfx.select(); setStage("review"); }}>
             REVIEW ANSWERS ▶
+          </button>
+          <button className="pixel-btn" style={{ width: "100%", marginTop: 10 }} onClick={retryWeakTopics}>
+            🎯 TRAIN WEAK TOPICS
+          </button>
+          <button className="pixel-btn" style={{ width: "100%", marginTop: 10 }} onClick={openFlashcards}>
+            🃏 FLASHCARDS
+          </button>
+          <button className="pixel-btn" style={{ width: "100%", marginTop: 10 }} onClick={saveShareCard}>
+            🖼️ SAVE SHARE CARD
           </button>
           <button className="pixel-btn" style={{ width: "100%", marginTop: 10 }} onClick={() => { sfx.select(); setShowLeaderboard(true); }}>
             🏅 LEADERBOARD
