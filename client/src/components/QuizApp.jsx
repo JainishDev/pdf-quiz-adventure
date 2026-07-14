@@ -118,6 +118,73 @@ function buildStudyPlan(summary, title = "Quiz") {
   };
 }
 
+function longestCorrectStreak(list = []) {
+  let best = 0;
+  let current = 0;
+  list.forEach((answer) => {
+    current = answer.isCorrect ? current + 1 : 0;
+    best = Math.max(best, current);
+  });
+  return best;
+}
+
+function pickQuest(quiz, total = 10) {
+  const seed = String(quiz?.title || "quiz")
+    .split("")
+    .reduce((sum, ch) => sum + ch.charCodeAt(0), total);
+  const streakTarget = Math.min(5, Math.max(3, Math.ceil(total * 0.35)));
+  const quests = [
+    {
+      id: "streak",
+      icon: "🔥",
+      title: "STREAK HUNT",
+      desc: `Land a ${streakTarget} answer combo.`,
+      reward: 45,
+      check: (summary, list) => longestCorrectStreak(list) >= streakTarget,
+      progress: (summary, list) => `${Math.min(longestCorrectStreak(list), streakTarget)}/${streakTarget}`,
+    },
+    {
+      id: "speed",
+      icon: "⚡",
+      title: "SPEED CLEAR",
+      desc: "Finish with 12s average or faster.",
+      reward: 35,
+      check: (summary) => summary.avgTime > 0 && summary.avgTime <= 12,
+      progress: (summary) => `${summary.avgTime || 0}s avg`,
+    },
+    {
+      id: "noskip",
+      icon: "🎯",
+      title: "NO-SKIP RUN",
+      desc: "Complete the quiz without skipping.",
+      reward: 30,
+      check: (summary) => summary.skipped === 0,
+      progress: (summary) => `${summary.skipped} skips`,
+    },
+    {
+      id: "accuracy",
+      icon: "👑",
+      title: "ACE CHECK",
+      desc: "Score 80% or higher.",
+      reward: 50,
+      check: (summary) => summary.correct / Math.max(summary.total, 1) >= 0.8,
+      progress: (summary) => `${Math.round((summary.correct / Math.max(summary.total, 1)) * 100)}%`,
+    },
+  ];
+  return quests[Math.abs(seed) % quests.length];
+}
+
+function evaluateQuest(quest, summary, list) {
+  if (!quest) return null;
+  const completed = quest.check(summary, list);
+  return {
+    ...quest,
+    completed,
+    progress: quest.progress(summary, list),
+    earned: completed ? quest.reward : 0,
+  };
+}
+
 // ─── Leaderboard helpers ──────────────────────────────────────────────────────
 // Same-origin by default for production/Vercel. In local dev, Astro proxies
 // /api to the Express server; PUBLIC_API_BASE remains available for split
@@ -468,6 +535,8 @@ export default function QuizApp() {
   const [stageAnimKey, setStageAnimKey] = useState(0);
   const [hintText, setHintText] = useState(null);
   const [timerFrozen, setTimerFrozen] = useState(false);
+  const [activeQuest, setActiveQuest] = useState(null);
+  const [questResult, setQuestResult] = useState(null);
 
   // Rival battle
   const [rival, setRival] = useState(null); // { type, name }
@@ -603,6 +672,8 @@ export default function QuizApp() {
     setFiftyUsedFor(new Set());
     setShared(false);
     setHintText(null);
+    setActiveQuest(pickQuest(libraryQuiz, libraryQuiz.questions.length));
+    setQuestResult(null);
     sfx.confirm();
     startTrans(() => setStage("vs"));
   };
@@ -639,6 +710,8 @@ export default function QuizApp() {
     setActiveModifierPenalty(3);
     setFiftyUsedFor(new Set());
     setHintText(null);
+    setActiveQuest(pickQuest(retryQuiz, missed.length));
+    setQuestResult(null);
     sfx.confirm();
     startTrans(() => setStage("quiz"));
   };
@@ -960,6 +1033,8 @@ export default function QuizApp() {
       setFiftyUsedFor(new Set());
       setShared(false);
       setHintText(null);
+      setActiveQuest(pickQuest(data, data.questions?.length || count));
+      setQuestResult(null);
       stopLoadingCycle();
       sfx.confirm();
       startTrans(() => setStage("vs"));
@@ -1128,12 +1203,21 @@ export default function QuizApp() {
   const finishQuiz = (finalAnswers = answers) => {
     sfx.levelUp();
     const summary = getQuizSummary(finalAnswers);
-    const earnedXp = runLabel === "BOSS MODE" && summary.correct === summary.total
+    const quest = evaluateQuest(activeQuest, summary, finalAnswers);
+    const modeXp = runLabel === "BOSS MODE" && summary.correct === summary.total
       ? xp + 100
       : runLabel === "DAILY CHALLENGE"
         ? xp + 30
         : xp;
+    const earnedXp = modeXp + (quest?.earned || 0);
     setXp(earnedXp);
+    setQuestResult(quest);
+    if (quest?.completed) {
+      setTimeout(() => {
+        showPopup(`${quest.icon} QUEST COMPLETE +${quest.reward} XP`, 2200);
+        sfx.badge?.();
+      }, 700);
+    }
 
     // Update daily streak
     const { streak: ds, wasNewDay } = updateDailyStreak();
@@ -1146,10 +1230,10 @@ export default function QuizApp() {
       xpEarned: earnedXp,
       correct: summary.correct,
       total: summary.total,
-      bestStreakThisQuiz: bestStreak,
+      bestStreakThisQuiz: Math.max(bestStreak, longestCorrectStreak(finalAnswers)),
       title: quiz.title,
     });
-    setSavedReviews(saveReviewAttempt({ quiz, answers: finalAnswers, summary, xp: earnedXp, bestStreak }));
+    setSavedReviews(saveReviewAttempt({ quiz, answers: finalAnswers, summary, xp: earnedXp, bestStreak: Math.max(bestStreak, longestCorrectStreak(finalAnswers)) }));
 
     if (leveledUp || newlyUnlocked.length) {
       setTimeout(() => sfx.badge?.(), 500);
@@ -1177,6 +1261,8 @@ export default function QuizApp() {
     startTrans(() => setStage("upload"));
     setFile(null);
     setQuiz(null);
+    setActiveQuest(null);
+    setQuestResult(null);
     sfx.select();
   };
 
@@ -1909,6 +1995,15 @@ export default function QuizApp() {
             </span>
           </div>
           <p className="vs-line">{battleIntroLine(rival)}</p>
+          {activeQuest && (
+            <div className="quest-card vs-quest-card">
+              <span className="quest-icon">{activeQuest.icon}</span>
+              <div>
+                <strong>{activeQuest.title}</strong>
+                <p>{activeQuest.desc} Reward +{activeQuest.reward} XP.</p>
+              </div>
+            </div>
+          )}
           <button className="pixel-btn primary vs-start-btn" onClick={enterBattle}>
             <span className="menu-cursor">▶</span> BATTLE START
           </button>
@@ -1923,6 +2018,7 @@ export default function QuizApp() {
     const progress = ((current + 1) / quiz.questions.length) * 100;
     const timePct = (timeLeft / TIME_PER_QUESTION) * 100;
     const fireCount = Math.min(streak, 5);
+    const liveQuest = activeQuest ? evaluateQuest(activeQuest, getQuizSummary(answers), answers) : null;
 
     return (
       <div className="gb-screen" data-theme={theme}>
@@ -1987,6 +2083,15 @@ export default function QuizApp() {
                   className={`hp-bar-inner timer-bar ${timerFrozen ? "frozen" : ""} ${timePct < 50 ? "mid" : ""} ${timePct < 25 ? "low timer-low" : ""}`}
                   style={{ width: "100%", transformOrigin: "left center", transform: "scaleX(1)" }}
                 />
+              </div>
+            )}
+            {liveQuest && (
+              <div className={`quest-card mini ${liveQuest.completed ? "complete" : ""}`}>
+                <span className="quest-icon">{liveQuest.icon}</span>
+                <div>
+                  <strong>{liveQuest.title}</strong>
+                  <p>{liveQuest.progress} · +{liveQuest.reward} XP</p>
+                </div>
               </div>
             )}
           </div>
@@ -2141,6 +2246,7 @@ export default function QuizApp() {
     const rank = pct === 100 ? "PERFECT RUN!" : pct >= 80 ? "CHAMPION!" : pct >= 60 ? "GYM LEADER" : pct >= 40 ? "KEEP TRAINING" : "BACK TO BASICS";
     const avgTime = summary.avgTime;
     const studyPlan = buildStudyPlan(summary, quiz.title || "Quiz");
+    const finalQuest = questResult || evaluateQuest(activeQuest, summary, answers);
     const isLevelEvent = levelUpInfo?.leveledUp || levelUpInfo?.newlyUnlocked?.length > 0;
 
     // Rank on leaderboard
@@ -2172,6 +2278,12 @@ export default function QuizApp() {
           <div className="stat-row"><span>SCORE</span><span>{summary.correct} / {total} ({pct}%)</span></div>
           <div className="stat-row"><span>XP EARNED</span><span>+{xp} xp</span></div>
           <div className="stat-row"><span>SPEED BONUS</span><span>+{speedBonus} xp ⚡</span></div>
+          {finalQuest && (
+            <div className={`stat-row quest-result-row ${finalQuest.completed ? "complete" : ""}`}>
+              <span>{finalQuest.icon} QUEST</span>
+              <span>{finalQuest.completed ? `+${finalQuest.reward} xp` : finalQuest.progress}</span>
+            </div>
+          )}
           <div className="stat-row"><span>BEST STREAK</span><span>{bestStreak}🔥</span></div>
           <div className="stat-row"><span>AVG TIME/Q</span><span>{avgTime}s</span></div>
           {(summary.skipped > 0 || summary.timedOut > 0) && (
@@ -2179,6 +2291,16 @@ export default function QuizApp() {
           )}
           {dailyStreak > 0 && <div className="stat-row"><span>DAILY STREAK</span><span>{dailyStreak} DAY{dailyStreak !== 1 ? "S" : ""} 🗓️</span></div>}
           {myRank > 0 && myRank <= 10 && <div className="stat-row gold-row"><span>LEADERBOARD</span><span>#{myRank} 🏅</span></div>}
+
+          {finalQuest && (
+            <div className={`quest-card result-quest-card ${finalQuest.completed ? "complete" : ""}`}>
+              <span className="quest-icon">{finalQuest.icon}</span>
+              <div>
+                <strong>{finalQuest.completed ? "QUEST COMPLETE" : "QUEST MISSED"} · {finalQuest.title}</strong>
+                <p>{finalQuest.desc} Progress: {finalQuest.progress}</p>
+              </div>
+            </div>
+          )}
 
           {summary.topics.length > 0 && (
             <div className="explanation-box topic-report">
