@@ -85,6 +85,14 @@ function compactFileName(name = "PDF") {
   return `${name.slice(0, 28)}...${name.slice(Math.max(28, name.length - 16 - ext.length))}`;
 }
 
+function shortDate(ts) {
+  try {
+    return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(ts));
+  } catch {
+    return "Saved";
+  }
+}
+
 // ─── Leaderboard helpers ──────────────────────────────────────────────────────
 // Same-origin by default for production/Vercel. In local dev, Astro proxies
 // /api to the Express server; PUBLIC_API_BASE remains available for split
@@ -276,7 +284,7 @@ const SceneBackdrop = memo(function SceneBackdrop({ theme, stars, clouds, firefl
   );
 });
 
-const TopBar = memo(function TopBar({ stage, dailyStreak, theme, muted, onHome, onTrainer, onToggleTheme, onToggleMute, onToggleLeaderboard }) {
+const TopBar = memo(function TopBar({ stage, dailyStreak, theme, muted, savedReviewCount = 0, onHome, onTrainer, onHistory, onToggleTheme, onToggleMute, onToggleLeaderboard }) {
   return (
     <div className="top-bar">
       <div className="icon-btn-group">
@@ -287,6 +295,9 @@ const TopBar = memo(function TopBar({ stage, dailyStreak, theme, muted, onHome, 
         )}
         <button className="icon-btn" onClick={onTrainer} title="Trainer Card">
           🎖️ <span className="label">CARD</span>
+        </button>
+        <button className="icon-btn" onClick={onHistory} title="Saved Reviews">
+          📚 <span className="label">{savedReviewCount > 0 ? savedReviewCount : "HIST"}</span>
         </button>
         {dailyStreak > 0 && (
           <span className="icon-btn streak-badge" title={`${dailyStreak}-day login streak`}>
@@ -1262,6 +1273,14 @@ export default function QuizApp() {
     startTrans(() => setStage("trainer"));
   }, []);
 
+  const openHistory = useCallback(() => {
+    sfx.select();
+    setHomeConfirmOpen(false);
+    setShowLeaderboard(false);
+    setSelectedSavedReview(null);
+    startTrans(() => setStage("history"));
+  }, []);
+
   // ─── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
     if (stage !== "quiz" || !quiz || homeConfirmOpen) return;
@@ -1335,7 +1354,7 @@ export default function QuizApp() {
     return (
       <div className="gb-screen" data-theme={theme}>
         <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
-        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
         <ThemeWipeOverlay wipe={wipe} />
         <BootIris bootPhase={bootPhase} />
         <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
@@ -1368,6 +1387,46 @@ export default function QuizApp() {
               </div>
               <div style={{ fontSize: 9, marginTop: 4, opacity: 0.7, color: "var(--gb-cream)" }}>
                 {xpIntoLevel} / {xpForNext} XP TO NEXT LEVEL
+              </div>
+            </div>
+          )}
+
+          <div className="home-actions-grid">
+            <button className="pixel-btn" onClick={openHistory}>
+              📚 HISTORY {savedReviews.length > 0 ? `(${savedReviews.length})` : ""}
+            </button>
+            <button className="pixel-btn" onClick={() => { sfx.select(); setShowLeaderboard(true); }}>
+              🏅 LEADERBOARD
+            </button>
+          </div>
+
+          {savedReviews.length > 0 && (
+            <div className="pixel-box compact-panel home-history-panel">
+              <div className="panel-heading-row">
+                <div>
+                  <h2>RECENT REVIEWS</h2>
+                  <p>Jump back into old answers anytime</p>
+                </div>
+                <button className="pixel-btn" onClick={openHistory}>ALL</button>
+              </div>
+              <div className="history-list compact">
+                {savedReviews.slice(0, 3).map((entry) => (
+                  <button
+                    key={entry.id}
+                    className="history-row history-button"
+                    onClick={() => {
+                      setSelectedSavedReview(entry);
+                      sfx.select();
+                      setStage("savedReview");
+                    }}
+                  >
+                    <div>
+                      <div className="history-title">{entry.title?.slice(0, 34) || "Quiz"}</div>
+                      <div className="history-meta">{shortDate(entry.date)} · {entry.score}/{entry.total} · Avg {entry.avgTime}s</div>
+                    </div>
+                    <span className="badge-tag">REVIEW ▶</span>
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -1638,7 +1697,7 @@ export default function QuizApp() {
     return (
       <div className="gb-screen" data-theme={theme}>
         <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
-        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
         <ThemeWipeOverlay wipe={wipe} />
         <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
         <LeaderboardPanel open={showLeaderboard} leaderboard={leaderboard} onClose={closeLeaderboard} />
@@ -1727,7 +1786,7 @@ export default function QuizApp() {
     return (
       <div className="gb-screen" data-theme={theme}>
         <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
-        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
         <ThemeWipeOverlay wipe={wipe} />
         <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
         <div className="pixel-box stage-enter">
@@ -1761,7 +1820,7 @@ export default function QuizApp() {
     return (
       <div className="gb-screen" data-theme={theme}>
         <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
-        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
         <ThemeWipeOverlay wipe={wipe} />
         <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
         <div className="pixel-box dark loading-wrap stage-enter" key={stageAnimKey}>
@@ -1792,7 +1851,7 @@ export default function QuizApp() {
     return (
       <div className="gb-screen" data-theme={theme}>
         <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
-        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
         <ThemeWipeOverlay wipe={wipe} />
         <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
         <div className="vs-screen stage-enter" key={stageAnimKey} onClick={enterBattle} style={{ "--rival-color": rival.type.color, "--rival-glow": rival.type.glow }}>
@@ -1827,7 +1886,7 @@ export default function QuizApp() {
     return (
       <div className="gb-screen" data-theme={theme}>
         <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
-        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
         <ThemeWipeOverlay wipe={wipe} />
         <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
         <LeaderboardPanel open={showLeaderboard} leaderboard={leaderboard} onClose={closeLeaderboard} />
@@ -1999,7 +2058,7 @@ export default function QuizApp() {
     return (
       <div className="gb-screen" data-theme={theme}>
         <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
-        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
         <ThemeWipeOverlay wipe={wipe} />
         <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
         <div className="pixel-box stage-enter flashcard-box">
@@ -2048,7 +2107,7 @@ export default function QuizApp() {
     return (
       <div className="gb-screen" data-theme={theme}>
         <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
-        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
         <ThemeWipeOverlay wipe={wipe} />
         <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
         <LeaderboardPanel open={showLeaderboard} leaderboard={leaderboard} onClose={closeLeaderboard} />
@@ -2140,12 +2199,65 @@ export default function QuizApp() {
     );
   }
 
+  // ─── HISTORY STAGE ────────────────────────────────────────────────────────────
+  if (stage === "history") {
+    return (
+      <div className="gb-screen" data-theme={theme}>
+        <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <ThemeWipeOverlay wipe={wipe} />
+        <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
+        <LeaderboardPanel open={showLeaderboard} leaderboard={leaderboard} onClose={closeLeaderboard} />
+        <div className="pixel-box stage-enter" key={stageAnimKey}>
+          <h2 style={{ fontSize: 12, marginBottom: 4 }}>📚 QUIZ HISTORY</h2>
+          <p style={{ fontSize: 8, marginBottom: 14, opacity: 0.72 }}>
+            Saved locally on this device after every finished quiz.
+          </p>
+
+          {savedReviews.length === 0 ? (
+            <div className="empty-history">
+              <div style={{ fontSize: 28, marginBottom: 10 }}>📝</div>
+              <p>No saved reviews yet.</p>
+              <span>Finish a quiz and your answer review will appear here.</span>
+            </div>
+          ) : (
+            <div className="history-list">
+              {savedReviews.map((entry) => (
+                <button
+                  key={entry.id}
+                  className="history-row history-button"
+                  onClick={() => {
+                    setSelectedSavedReview(entry);
+                    sfx.select();
+                    setStage("savedReview");
+                  }}
+                >
+                  <div>
+                    <div className="history-title">{entry.title || "Quiz"}</div>
+                    <div className="history-meta">
+                      {shortDate(entry.date)} · {entry.score}/{entry.total} correct · +{entry.xp} XP · Best {entry.bestStreak}
+                    </div>
+                  </div>
+                  <span className="badge-tag">OPEN ▶</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button className="pixel-btn primary" style={{ width: "100%", marginTop: 14 }} onClick={() => { sfx.select(); setStage("upload"); }}>
+            ◀ BACK HOME
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ─── REVIEW STAGE ─────────────────────────────────────────────────────────────
   if (stage === "savedReview" && selectedSavedReview) {
     return (
       <div className="gb-screen" data-theme={theme}>
         <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
-        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
         <ThemeWipeOverlay wipe={wipe} />
         <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
         <div className="pixel-box stage-enter" key={stageAnimKey}>
@@ -2194,7 +2306,7 @@ export default function QuizApp() {
     return (
       <div className="gb-screen" data-theme={theme}>
         <SceneBackdrop theme={theme} stars={stars} clouds={clouds} fireflies={fireflies} />
-        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
+        <TopBar stage={stage} dailyStreak={dailyStreak} theme={theme} muted={muted} onHome={requestHome} onTrainer={openTrainerCard} onHistory={openHistory} savedReviewCount={savedReviews.length} onToggleTheme={toggleTheme} onToggleMute={toggleMute} onToggleLeaderboard={toggleLeaderboard} />
         <ThemeWipeOverlay wipe={wipe} />
         <HomeConfirmModal open={homeConfirmOpen} stage={stage} onCancel={cancelGoHome} onConfirm={confirmGoHome} />
         <div className="pixel-box stage-enter" key={stageAnimKey}>
