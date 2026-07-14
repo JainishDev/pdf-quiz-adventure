@@ -13,5 +13,8 @@ app.use((req, _res, next) => {
   next();
 });
 app.use("/", leaderboardRouter);
+app.use((err, _req, res, _next) => {
+  res.status(err.status || 500).json({ error: err.message || "Server error" });
+});
 
 export default app;

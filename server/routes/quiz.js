@@ -9,11 +9,12 @@ import { generateQuizFallback } from "../services/fallbackService.js";
 import { ocrPdfBuffer, looksLikeScannedPdf } from "../services/ocrService.js";
 
 const router = express.Router();
+const MAX_PDF_MB = Number.parseInt(process.env.MAX_PDF_MB || "25", 10);
 
 // ─── Multer setup ─────────────────────────────────────────────────────────────
 const upload = multer({
   dest: process.env.VERCEL ? path.join("/tmp", "uploads") : path.join(process.cwd(), "uploads"),
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB
+  limits: { fileSize: MAX_PDF_MB * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype !== "application/pdf") return cb(new Error("Only PDF files are allowed"));
     cb(null, true);
@@ -107,6 +108,7 @@ router.post("/generate", upload.single("pdf"), async (req, res) => {
     const cachedQuiz = quizCacheGet(qKey);
     if (cachedQuiz) {
       const elapsed = Date.now() - t0;
+      res.setHeader("Server-Timing", `quiz;dur=${elapsed}`);
       console.log(`[quiz] Full-result cache hit for ${qKey} (${elapsed}ms, $0 AI cost)`);
       return res.json({
         ...cachedQuiz.quiz,
@@ -175,6 +177,7 @@ router.post("/generate", upload.single("pdf"), async (req, res) => {
     quizCacheSet(qKey, { quiz, usedFallback, usedOCR });
 
     const elapsed = Date.now() - t0;
+    res.setHeader("Server-Timing", `quiz;dur=${elapsed}`);
     console.log(`[quiz] Done in ${elapsed}ms — ${quiz.questions.length} Qs, fallback=${usedFallback}, ocr=${usedOCR}`);
 
     return res.json({

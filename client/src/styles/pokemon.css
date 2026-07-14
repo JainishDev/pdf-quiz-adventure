@@ -311,6 +311,7 @@ body {
   border-radius: 4px;
   padding: 18px;
   position: relative;
+  contain: layout style;
 }
 [data-theme="night"] .pixel-box { box-shadow: var(--gb-glow); }
 .pixel-box.dark {
@@ -406,6 +407,8 @@ body {
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
   margin-top: 16px;
+  content-visibility: auto;
+  contain-intrinsic-size: 260px;
 }
 .feature-card {
   background: var(--gb-card-bg);
@@ -413,6 +416,7 @@ body {
   box-shadow: 3px 3px 0 0 var(--gb-navy);
   padding: 12px 10px;
   text-align: center;
+  contain: layout style paint;
   animation: badge-pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.4) backwards;
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
@@ -692,6 +696,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  contain: layout style;
 }
 @media (min-width: 640px) {
   .options-list {
@@ -1317,6 +1322,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  content-visibility: auto;
+  contain-intrinsic-size: 280px;
 }
 .step-row {
   display: flex;
@@ -1326,6 +1333,7 @@ body {
   border: 3px solid var(--gb-dark);
   box-shadow: 3px 3px 0 0 var(--gb-navy);
   padding: 12px;
+  contain: layout style paint;
   animation: slide-in 0.22s ease backwards;
 }
 .step-num {
@@ -1358,11 +1366,18 @@ body {
 }
 
 /* ── FAQ ────────────────────────────────────────────────────────────────────── */
-.faq-list { display: flex; flex-direction: column; gap: 8px; }
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  content-visibility: auto;
+  contain-intrinsic-size: 360px;
+}
 .faq-item {
   background: var(--gb-card-bg);
   border: 3px solid var(--gb-dark);
   box-shadow: 3px 3px 0 0 var(--gb-navy);
+  contain: layout style paint;
   animation: slide-in 0.2s ease backwards;
 }
 .faq-item summary {
@@ -1403,6 +1418,8 @@ body {
   border: 3px solid var(--gb-dark);
   box-shadow: 4px 4px 0 0 rgba(0,0,0,0.35);
   padding: 18px 14px;
+  content-visibility: auto;
+  contain-intrinsic-size: 180px;
 }
 .cta-band .cta-title { font-size: 12px; color: var(--gb-cream); margin-bottom: 6px; line-height: 1.7; }
 .cta-band .cta-desc { font-size: 9px; color: var(--gb-cream); opacity: 0.8; margin-bottom: 14px; line-height: 1.7; }

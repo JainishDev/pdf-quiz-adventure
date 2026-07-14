@@ -53,6 +53,34 @@ function questionTypeClause(t) {
   return "Mix ~70% mcq / 30% true_false.";
 }
 
+function compactSourceText(text, maxChars = 22000) {
+  const cleaned = String(text || "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (cleaned.length <= maxChars) return cleaned;
+
+  const markerMatches = [...cleaned.matchAll(/\[Page\s+\d+\]/gi)];
+  if (markerMatches.length >= 4) {
+    const pages = markerMatches.map((match, index) => {
+      const start = match.index;
+      const end = markerMatches[index + 1]?.index ?? cleaned.length;
+      return cleaned.slice(start, end).trim();
+    }).filter(Boolean);
+    const picks = [0, 1, Math.floor(pages.length * 0.33), Math.floor(pages.length * 0.66), pages.length - 2, pages.length - 1]
+      .filter((i, idx, arr) => i >= 0 && i < pages.length && arr.indexOf(i) === idx);
+    return picks.map((i) => pages[i]).join("\n\n").slice(0, maxChars);
+  }
+
+  const slice = Math.floor(maxChars / 3);
+  const middleStart = Math.max(0, Math.floor(cleaned.length / 2) - Math.floor(slice / 2));
+  return [
+    cleaned.slice(0, slice),
+    cleaned.slice(middleStart, middleStart + slice),
+    cleaned.slice(-slice),
+  ].join("\n\n[...]\n\n").slice(0, maxChars);
+}
+
 // ─── Shared response parser ───────────────────────────────────────────────────
 function parseAndValidate(raw, count, questionType = "mixed") {
   let quiz;
@@ -116,7 +144,8 @@ async function generateWithAnthropic(text, count, difficulty, questionType, sign
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
 
-  const userPrompt = `${difficultyClause(difficulty)}\n${questionTypeClause(questionType)}\nGenerate exactly ${count} questions from:\n\n"""\n${text.slice(0, 22000)}\n"""`;
+  const sourceText = compactSourceText(text, 22000);
+  const userPrompt = `${difficultyClause(difficulty)}\n${questionTypeClause(questionType)}\nGenerate exactly ${count} questions from this representative source sample:\n\n"""\n${sourceText}\n"""`;
 
   const abortable = mergedSignal(40000, signal);
 
@@ -159,7 +188,8 @@ async function generateWithGemini(text, count, difficulty, questionType, signal)
   if (!apiKey) throw new Error("GEMINI_API_KEY not set");
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-  const userPrompt = `${SYSTEM_PROMPT}\n\n${difficultyClause(difficulty)}\n${questionTypeClause(questionType)}\n\nGenerate exactly ${count} questions from:\n\n"""\n${text.slice(0, 20000)}\n"""`;
+  const sourceText = compactSourceText(text, 20000);
+  const userPrompt = `${SYSTEM_PROMPT}\n\n${difficultyClause(difficulty)}\n${questionTypeClause(questionType)}\n\nGenerate exactly ${count} questions from this representative source sample:\n\n"""\n${sourceText}\n"""`;
 
   const abortable = mergedSignal(120000, signal);
 

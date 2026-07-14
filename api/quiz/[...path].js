@@ -13,5 +13,13 @@ app.use((req, _res, next) => {
 });
 
 app.use("/", quizRouter);
+app.use((err, _req, res, _next) => {
+  const status = err.code === "LIMIT_FILE_SIZE" ? 413 : err.status || 500;
+  res.status(status).json({
+    error: err.code === "LIMIT_FILE_SIZE"
+      ? "PDF is too large for this deployment"
+      : err.message || "Server error",
+  });
+});
 
 export default app;
