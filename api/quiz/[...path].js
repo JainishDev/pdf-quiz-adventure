@@ -6,7 +6,8 @@ const app = express();
 
 app.use((req, _res, next) => {
   if (req.url.startsWith("/api/quiz")) {
-    req.url = req.url.slice("/api/quiz".length) || "/";
+    const stripped = req.url.slice("/api/quiz".length);
+    req.url = stripped.startsWith("?") ? `/${stripped}` : stripped || "/";
   }
   next();
 });

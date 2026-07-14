@@ -7,7 +7,8 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use((req, _res, next) => {
   if (req.url.startsWith("/api/leaderboard")) {
-    req.url = req.url.slice("/api/leaderboard".length) || "/";
+    const stripped = req.url.slice("/api/leaderboard".length);
+    req.url = stripped.startsWith("?") ? `/${stripped}` : stripped || "/";
   }
   next();
 });
