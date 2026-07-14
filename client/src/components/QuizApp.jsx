@@ -2032,7 +2032,7 @@ export default function QuizApp() {
                   >
                     <span className="option-key">{i + 1}</span>
                     {opt === selected && !answered && <span className="menu-cursor">▶</span>}
-                    {opt}
+                    <span className="option-text">{opt}</span>
                   </button>
                 );
               })}

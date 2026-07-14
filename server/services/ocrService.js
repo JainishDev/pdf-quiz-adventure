@@ -6,7 +6,7 @@
 // too little text — i.e. the PDF is likely scanned/image-based.
 
 import { createCanvas, Image, ImageData } from "canvas";
-import { createWorker } from "tesseract.js";
+import { createWorker, PSM } from "tesseract.js";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
@@ -57,12 +57,13 @@ class NodeCanvasFactory {
  */
 export async function ocrPdfBuffer(buffer, opts = {}) {
   const {
-    maxPages = Number.parseInt(process.env.OCR_MAX_PAGES || "20", 10),
+    maxPages = Number.parseInt(process.env.OCR_MAX_PAGES || "30", 10),
     onProgress,
     minCharsPerPage = Number.parseInt(process.env.OCR_MIN_CHARS_PER_PAGE || "80", 10),
-    renderScale = Number.parseFloat(process.env.OCR_RENDER_SCALE || "2.6"),
+    renderScale = Number.parseFloat(process.env.OCR_RENDER_SCALE || "3.2"),
     workerCount = Number.parseInt(process.env.OCR_WORKERS || "2", 10),
     lang = process.env.OCR_LANG || "eng",
+    mode = process.env.OCR_MODE || "advanced",
   } = opts;
   const pdfjs = await getPdfjs();
 
@@ -87,8 +88,8 @@ export async function ocrPdfBuffer(buffer, opts = {}) {
     }
 
     onProgress?.({ page: pageNum, total: pageCount, status: "rendering" });
-    const image = await renderPageImage({ page, buffer, pageNum, renderScale });
-    ocrJobs.push({ pageNum, image });
+    const images = await renderPageImages({ page, buffer, pageNum, renderScale, advanced: mode !== "fast" });
+    ocrJobs.push({ pageNum, images });
   }
 
   if (ocrJobs.length === 0) {
@@ -101,6 +102,7 @@ export async function ocrPdfBuffer(buffer, opts = {}) {
   const workers = await Promise.all(
     Array.from({ length: POOL_SIZE }, () => createWorker(lang))
   );
+  await Promise.all(workers.map((worker) => configureWorker(worker)));
 
   let nextIndex = 0;
 
@@ -110,8 +112,7 @@ export async function ocrPdfBuffer(buffer, opts = {}) {
       if (i >= ocrJobs.length) return;
       const job = ocrJobs[i];
       onProgress?.({ page: job.pageNum, total: pageCount, status: "ocr" });
-      const { data } = await worker.recognize(job.image);
-      pageTexts[job.pageNum - 1] = cleanOcrText(data.text);
+      pageTexts[job.pageNum - 1] = await recognizeBestPage(worker, job.images);
     }
   }
 
@@ -129,7 +130,47 @@ export async function ocrPdfBuffer(buffer, opts = {}) {
     .trim();
 }
 
-async function renderPageImage({ page, buffer, pageNum, renderScale }) {
+async function configureWorker(worker) {
+  await worker.setParameters({
+    tessedit_pageseg_mode: PSM.AUTO,
+    preserve_interword_spaces: "1",
+    user_defined_dpi: "300",
+  });
+}
+
+async function recognizeBestPage(worker, images) {
+  const attempts = [];
+  for (const image of images) {
+    try {
+      const { data } = await worker.recognize(image.buffer);
+      attempts.push({
+        text: cleanOcrText(data.text),
+        confidence: Number(data.confidence) || 0,
+        variant: image.variant,
+      });
+    } catch (err) {
+      console.warn(`[quiz] OCR ${image.variant} variant failed:`, err.message);
+    }
+  }
+
+  const scored = attempts
+    .filter((item) => item.text)
+    .map((item) => ({
+      ...item,
+      score: item.confidence + Math.min(item.text.length / 18, 35) + uniqueWordScore(item.text),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.text || "";
+}
+
+function uniqueWordScore(text) {
+  const words = String(text).toLowerCase().match(/[a-z0-9]{3,}/g) || [];
+  if (!words.length) return 0;
+  return Math.min(new Set(words).size / 8, 18);
+}
+
+async function renderPageImages({ page, buffer, pageNum, renderScale, advanced }) {
   try {
     const viewport = page.getViewport({ scale: renderScale }); // higher scale = better OCR accuracy
     const canvas = createCanvas(viewport.width, viewport.height);
@@ -142,11 +183,10 @@ async function renderPageImage({ page, buffer, pageNum, renderScale }) {
       canvas,
       canvasFactory: new NodeCanvasFactory(),
     }).promise;
-    preprocessCanvas(canvas);
-    return canvas.toBuffer("image/png");
+    return makeOcrVariants(canvas, advanced);
   } catch (err) {
     const fallback = await renderPageWithImageMagick(buffer, pageNum).catch(() => null);
-    if (fallback) return fallback;
+    if (fallback) return [{ variant: "imagemagick", buffer: fallback }];
     throw err;
   }
 }
@@ -158,12 +198,14 @@ async function renderPageWithImageMagick(buffer, pageNum) {
   await fs.writeFile(input, buffer);
   try {
     await execFileAsync("convert", [
-      "-density", "240",
+      "-density", "300",
       `${input}[${pageNum - 1}]`,
       "-alpha", "remove",
       "-colorspace", "Gray",
-      "-contrast-stretch", "0x20%",
-      "-threshold", "62%",
+      "-auto-orient",
+      "-deskew", "40%",
+      "-normalize",
+      "-sharpen", "0x1",
       output,
     ], { timeout: 30000, maxBuffer: 1024 * 1024 * 8 });
     return await fs.readFile(output);
@@ -190,8 +232,23 @@ function cleanOcrText(text) {
     .trim();
 }
 
-function preprocessCanvas(canvas) {
+function makeOcrVariants(canvas, advanced) {
+  const variants = [
+    { variant: "balanced", buffer: preprocessCanvas(canvas, { mode: "balanced" }) },
+  ];
+  if (advanced) {
+    variants.push(
+      { variant: "high-contrast", buffer: preprocessCanvas(canvas, { mode: "threshold", contrast: 1.42 }) },
+      { variant: "soft-handwriting", buffer: preprocessCanvas(canvas, { mode: "gray", contrast: 1.18 }) }
+    );
+  }
+  return variants;
+}
+
+function preprocessCanvas(sourceCanvas, opts = {}) {
+  const canvas = createCanvas(sourceCanvas.width, sourceCanvas.height);
   const ctx = canvas.getContext("2d");
+  ctx.drawImage(sourceCanvas, 0, 0);
   const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = image.data;
   let sum = 0;
@@ -203,12 +260,17 @@ function preprocessCanvas(canvas) {
   }
 
   const avg = sum / Math.max(pixels, 1);
-  const threshold = Math.max(120, Math.min(210, avg * 0.92));
+  const threshold = Math.max(110, Math.min(218, avg * 0.9));
+  const contrast = opts.contrast || 1.28;
 
   for (let i = 0; i < data.length; i += 4) {
     const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.25 + 128));
-    const value = contrasted < threshold ? 0 : 255;
+    const contrasted = Math.max(0, Math.min(255, (gray - 128) * contrast + 128));
+    const value = opts.mode === "threshold"
+      ? contrasted < threshold ? 0 : 255
+      : opts.mode === "gray"
+        ? contrasted
+        : contrasted < threshold ? 18 : 255;
     data[i] = value;
     data[i + 1] = value;
     data[i + 2] = value;
@@ -216,6 +278,7 @@ function preprocessCanvas(canvas) {
   }
 
   ctx.putImageData(image, 0, 0);
+  return canvas.toBuffer("image/png");
 }
 
 /**

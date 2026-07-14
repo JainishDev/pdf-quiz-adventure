@@ -52,27 +52,74 @@
 
 /* ── Night Mode ────────────────────────────────────────────────────────────── */
 [data-theme="night"] {
-  --gb-dark: #1a1330;
-  --gb-navy: #3a2361;
-  --gb-blue: #6b46b5;
-  --gb-cream: #f3e8ff;
-  --gb-cream-dark: #ddc4f5;
-  --gb-red: #e0498f;
-  --gb-red-dark: #a02868;
-  --gb-green: #4fd0b5;
-  --gb-yellow: #ffd166;
-  --gb-text: #f3e8ff;
-  --gb-border: #4a3a7a;
-  --bg-sky-1: #2c1a4a;
-  --bg-sky-2: #431f66;
-  --bg-sky-3: #170f2b;
+  --gb-dark: #100923;
+  --gb-navy: #35205f;
+  --gb-blue: #7b5cff;
+  --gb-cream: #fbf5ff;
+  --gb-cream-dark: #d8c7ff;
+  --gb-red: #ff4f9a;
+  --gb-red-dark: #8b1f59;
+  --gb-green: #59f1c8;
+  --gb-yellow: #ffe071;
+  --gb-text: #fbf5ff;
+  --gb-border: #745cff;
+  --bg-sky-1: #201246;
+  --bg-sky-2: #140a2d;
+  --bg-sky-3: #070313;
   /* Real dark surfaces for every card/button/input — not just the sky. */
-  --gb-card-bg: #241847;
-  --gb-card-bg-alt: #1a1136;
-  --gb-overlay: rgba(107, 70, 181, 0.22);
-  --gb-overlay-hover: rgba(107, 70, 181, 0.34);
-  --gb-glow: 0 0 0 4px var(--gb-navy), 0 0 18px 2px rgba(107, 70, 181, 0.55), 6px 6px 0 0 rgba(0, 0, 0, 0.5);
-  --gb-glow-soft: 0 0 10px 1px rgba(224, 73, 143, 0.35);
+  --gb-card-bg: #1c123b;
+  --gb-card-bg-alt: #120a27;
+  --gb-overlay: rgba(123, 92, 255, 0.18);
+  --gb-overlay-hover: rgba(255, 79, 154, 0.2);
+  --gb-glow: 0 0 0 4px rgba(123, 92, 255, 0.75), 0 0 24px 2px rgba(123, 92, 255, 0.58), 0 0 42px 4px rgba(255, 79, 154, 0.28), 6px 6px 0 0 rgba(0, 0, 0, 0.65);
+  --gb-glow-soft: 0 0 12px 1px rgba(89, 241, 200, 0.28), 0 0 22px 3px rgba(255, 79, 154, 0.2);
+}
+
+[data-theme="night"] .sky-layer {
+  background:
+    radial-gradient(circle at 18% 16%, rgba(255, 79, 154, 0.22), transparent 24%),
+    radial-gradient(circle at 82% 12%, rgba(89, 241, 200, 0.2), transparent 26%),
+    linear-gradient(180deg, var(--bg-sky-1) 0%, var(--bg-sky-2) 52%, var(--bg-sky-3) 100%);
+  animation-duration: 18s;
+}
+
+[data-theme="night"] .scene-backdrop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(123, 92, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(123, 92, 255, 0.12) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(to bottom, transparent, black 18%, black 78%, transparent);
+  opacity: 0.32;
+  animation: night-grid-drift 9s linear infinite;
+}
+
+[data-theme="night"] .pixel-box {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.045), transparent 28%),
+    var(--gb-card-bg);
+  border-color: rgba(251, 245, 255, 0.88);
+  box-shadow: var(--gb-glow);
+}
+
+[data-theme="night"] .pixel-btn,
+[data-theme="night"] .history-row,
+[data-theme="night"] .settings-drawer {
+  border-color: rgba(251, 245, 255, 0.78);
+  box-shadow: 4px 4px 0 0 rgba(123, 92, 255, 0.82), 0 0 14px rgba(89, 241, 200, 0.14);
+}
+
+[data-theme="night"] .badge-tag {
+  background: rgba(89, 241, 200, 0.13);
+  border-color: rgba(89, 241, 200, 0.55);
+  color: var(--gb-cream);
+}
+
+@keyframes night-grid-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(34px, 34px, 0); }
 }
 
 /* ── Base Reset ────────────────────────────────────────────────────────────── */
@@ -237,6 +284,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .sky-layer, .starfield span, .pixel-cloud, .aurora, .firefly, .hill,
   .title-bob, .pokeball-wobble, .hero-orbit.left, .hero-orbit.right { animation: none !important; }
+  [data-theme="night"] .scene-backdrop::before { animation: none !important; }
   .stage-enter { animation: none !important; }
   .pixel-btn { transition: background 0.1s !important; }
 }
@@ -467,13 +515,19 @@ body {
 
 /* ── Option Buttons (quiz) ──────────────────────────────────────────────────── */
 .option-btn {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   text-align: left;
+  line-height: 1.65;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
   /* Staggered entrance animation via CSS var */
   animation: option-in 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) var(--opt-delay, 0s) both;
 }
+.option-btn .menu-cursor { margin-right: 0; }
 .option-key {
   font-size: 8px;
   background: var(--gb-navy);
@@ -483,6 +537,15 @@ body {
   flex-shrink: 0;
   opacity: 0.7;
 }
+.option-text {
+  grid-column: 2 / -1;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: auto;
+}
+.option-btn.selected .option-text { grid-column: 3 / -1; }
 
 /* Options visible/hidden state for smooth appear */
 .options-hidden .option-btn { opacity: 0; transform: translateX(-10px); }
@@ -607,8 +670,11 @@ body {
 .question-card { contain: layout style; }
 .question-text {
   font-size: 12px;
-  line-height: 2;
+  line-height: 1.9;
   margin-bottom: 16px;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: auto;
 }
 
 .question-meta {
@@ -1271,7 +1337,14 @@ body {
      title/content text underneath. Reserve real space for it instead. */
   .gb-screen { padding-top: 92px; }
   .pixel-box { padding: 14px; }
-  .question-text { font-size: 11px; line-height: 1.8; }
+  .question-text { font-size: 11px; line-height: 1.95; }
+  .option-btn {
+    align-items: start;
+    font-size: 9px;
+    line-height: 1.8;
+    padding: 12px 10px;
+  }
+  .option-key { margin-top: 2px; }
   .result-badge { width: 72px; height: 72px; font-size: 22px; }
   .dropzone { padding: 22px 10px; }
   .powerup-row { grid-template-columns: repeat(4, 1fr); gap: 4px; }
@@ -1283,7 +1356,8 @@ body {
 @media (min-width: 900px) {
   .gb-screen { max-width: 820px; padding-top: 34px; }
   .pixel-box { padding: 26px; }
-  .question-text { font-size: 14px; }
+  .question-text { font-size: 14px; line-height: 1.85; }
+  .option-btn { font-size: 10px; }
   .hud-box { margin-bottom: 16px; }
 }
 
