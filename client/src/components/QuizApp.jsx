@@ -93,6 +93,31 @@ function shortDate(ts) {
   }
 }
 
+function buildStudyPlan(summary, title = "Quiz") {
+  const pct = Math.round((summary.correct / summary.total) * 100);
+  const weakTopics = summary.topics
+    .filter((t) => t.correct < t.total)
+    .map((t) => `${t.topic} (${t.correct}/${t.total})`);
+  const steps = [];
+
+  if (weakTopics.length) {
+    steps.push(`Review weak topic${weakTopics.length > 1 ? "s" : ""}: ${weakTopics.join(", ")}.`);
+  } else {
+    steps.push("Keep momentum: review explanations once, then try a harder run.");
+  }
+  if (summary.timedOut > 0) steps.push(`Speed drill: redo ${summary.timedOut} timed-out question${summary.timedOut > 1 ? "s" : ""}.`);
+  if (summary.skipped > 0) steps.push(`Confidence drill: revisit ${summary.skipped} skipped question${summary.skipped > 1 ? "s" : ""} without power-ups.`);
+  if (summary.slowest) steps.push(`Focus on Q${summary.slowest.index}; it took ${summary.slowest.time}s.`);
+  if (pct < 80) steps.push("Run Weak Topic Retry, then flashcards for 5 minutes.");
+  else steps.push("Try Boss Mode or increase difficulty next.");
+
+  return {
+    pct,
+    steps: steps.slice(0, 4),
+    text: [`Study Plan: ${title}`, `Score: ${summary.correct}/${summary.total} (${pct}%)`, ...steps.slice(0, 4).map((s, i) => `${i + 1}. ${s}`)].join("\n"),
+  };
+}
+
 // ─── Leaderboard helpers ──────────────────────────────────────────────────────
 // Same-origin by default for production/Vercel. In local dev, Astro proxies
 // /api to the Express server; PUBLIC_API_BASE remains available for split
@@ -1325,6 +1350,19 @@ export default function QuizApp() {
     }
   };
 
+  const copyStudyPlan = async () => {
+    if (!quiz) return;
+    const plan = buildStudyPlan(getQuizSummary(), quiz.title || "Quiz");
+    try {
+      await navigator.clipboard.writeText(plan.text);
+      showPopup("STUDY PLAN COPIED", 1600);
+      sfx.confirm();
+    } catch {
+      showPopup("COPY FAILED", 1600);
+      sfx.wrong();
+    }
+  };
+
   // ─── Static memoized scene elements ─────────────────────────────────────────
   const clouds = useMemo(
     () => Array.from({ length: 5 }, (_, i) => ({
@@ -1494,6 +1532,9 @@ export default function QuizApp() {
               {practiceMode && <span className="badge-tag">PRACTICE</span>}
               {modifierPenalty > 0 && <span className="badge-tag">RANK -{modifierPenalty}%</span>}
             </div>
+            <p className="upload-hint">
+              Long text PDFs are okay under the file limit. Scanned pages may take longer because OCR has to read the images.
+            </p>
 
             <details className="settings-drawer" open>
               <summary>QUIZ SETUP</summary>
@@ -2099,6 +2140,7 @@ export default function QuizApp() {
     const pct = Math.round((summary.correct / total) * 100);
     const rank = pct === 100 ? "PERFECT RUN!" : pct >= 80 ? "CHAMPION!" : pct >= 60 ? "GYM LEADER" : pct >= 40 ? "KEEP TRAINING" : "BACK TO BASICS";
     const avgTime = summary.avgTime;
+    const studyPlan = buildStudyPlan(summary, quiz.title || "Quiz");
     const isLevelEvent = levelUpInfo?.leveledUp || levelUpInfo?.newlyUnlocked?.length > 0;
 
     // Rank on leaderboard
@@ -2149,6 +2191,22 @@ export default function QuizApp() {
               ))}
             </div>
           )}
+
+          <div className="explanation-box study-plan-box">
+            <div className="panel-heading-row compact-heading">
+              <div>
+                <strong>SMART STUDY PLAN</strong>
+                <p>{studyPlan.pct >= 80 ? "Polish mode unlocked." : "Next best steps for the rematch."}</p>
+              </div>
+              <button className="pixel-btn" onClick={copyStudyPlan}>COPY</button>
+            </div>
+            {studyPlan.steps.map((step, i) => (
+              <div key={step} className="study-step">
+                <span>{i + 1}</span>
+                <p>{step}</p>
+              </div>
+            ))}
+          </div>
 
           <div className="explanation-box topic-report">
             <strong>EXAM REPORT</strong>

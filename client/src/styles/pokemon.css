@@ -1529,6 +1529,12 @@ body {
   gap: 8px;
   margin-top: 16px;
 }
+.upload-hint {
+  font-size: 8px;
+  line-height: 1.7;
+  margin: 10px 0 0;
+  opacity: 0.72;
+}
 .settings-drawer {
   margin-top: 12px;
   background: var(--gb-card-bg-alt);
@@ -1705,6 +1711,39 @@ body {
   font-size: 8px;
   line-height: 1.7;
   opacity: 0.72;
+}
+.compact-heading {
+  margin-bottom: 10px;
+}
+.compact-heading p {
+  margin-top: 5px;
+}
+.study-plan-box {
+  text-align: left;
+}
+.study-step {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 0;
+  border-top: 2px solid rgba(26, 43, 60, 0.2);
+}
+.study-step span {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  background: var(--gb-yellow);
+  border: 2px solid var(--gb-dark);
+  color: #241a1a;
+  font-size: 8px;
+}
+.study-step p {
+  margin: 0;
+  font-size: 8px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 .locked-badge {
   opacity: 0.48;
