@@ -15,6 +15,7 @@ const LOADING_LINES = [
 ];
 
 const TIME_PER_QUESTION = 20;
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 const XP_BY_DIFFICULTY = { easy: 10, medium: 20, hard: 30 };
 const FREEZE_BONUS_SECONDS = 10;
 const STARTING_POWERUPS = { fiftyFifty: 2, skip: 2, freeze: 2, hint: 1 };
@@ -71,6 +72,18 @@ const ls = {
 
 function loadTheme() { return ls.get(THEME_KEY, "day") === "night" ? "night" : "day"; }
 function saveTheme(t) { ls.set(THEME_KEY, t); }
+
+function formatBytes(bytes = 0) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+function compactFileName(name = "PDF") {
+  if (name.length <= 54) return name;
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 ? name.slice(dot) : "";
+  return `${name.slice(0, 28)}...${name.slice(Math.max(28, name.length - 16 - ext.length))}`;
+}
 
 // ─── Leaderboard helpers ──────────────────────────────────────────────────────
 // Same-origin by default for production/Vercel. In local dev, Astro proxies
@@ -472,6 +485,12 @@ export default function QuizApp() {
   const wipeTimeoutRef = useRef(null);
 
   const stars = useStars(36);
+  const fileTooLarge = Boolean(file && file.size > MAX_UPLOAD_BYTES);
+  const fileStatus = file
+    ? fileTooLarge
+      ? `TOO LARGE · ${formatBytes(file.size)} / ${formatBytes(MAX_UPLOAD_BYTES)} MAX`
+      : `READY · ${formatBytes(file.size)} / ${formatBytes(MAX_UPLOAD_BYTES)} MAX`
+    : `PDF ONLY · ${formatBytes(MAX_UPLOAD_BYTES)} MAX`;
 
   const buyModifier = (item) => {
     const result = spendXP(item.cost);
@@ -737,7 +756,11 @@ export default function QuizApp() {
       setError("Only PDF files are supported, trainer!");
       return;
     }
-    setError("");
+    if (f.size > MAX_UPLOAD_BYTES) {
+      setError(`This PDF is ${formatBytes(f.size)}. Vercel upload limit is ${formatBytes(MAX_UPLOAD_BYTES)}, so choose a smaller/exported PDF.`);
+    } else {
+      setError("");
+    }
     setFile(f);
     sfx.select();
   }, []);
@@ -847,6 +870,10 @@ export default function QuizApp() {
   // ─── Generate Quiz ───────────────────────────────────────────────────────────
   const generateQuiz = async () => {
     if (!file) { setError("Choose a PDF first!"); return; }
+    if (fileTooLarge) {
+      setError(`This PDF is ${formatBytes(file.size)}. Vercel blocks large uploads before the app can read it.`);
+      return;
+    }
     setError("");
     cancelledRef.current = false;
     startTrans(() => setStage("loading"));
@@ -1379,9 +1406,17 @@ export default function QuizApp() {
             >
               <div className="pokeball" />
               {file ? (
-                <p>📄 {file.name}<br /><span style={{ fontSize: 9 }}>Tap to change</span></p>
+                <p className="file-picked">
+                  <span className="file-name">📄 {compactFileName(file.name)}</span>
+                  <span className={`file-meta ${fileTooLarge ? "bad" : "good"}`}>{fileStatus}</span>
+                  <span className="file-change">Tap to change</span>
+                </p>
               ) : (
-                <p>Drop your PDF here<br />or tap to browse</p>
+                <p className="file-picked">
+                  <span className="file-name">Drop your PDF here</span>
+                  <span className="file-meta">{fileStatus}</span>
+                  <span className="file-change">or tap to browse</span>
+                </p>
               )}
               <input
                 ref={fileInputRef}
@@ -1527,8 +1562,9 @@ export default function QuizApp() {
               className="pixel-btn primary"
               style={{ width: "100%", marginTop: 18, fontSize: 12 }}
               onClick={generateQuiz}
+              disabled={!file || fileTooLarge}
             >
-              <span className="menu-cursor">▶</span> GENERATE QUIZ
+              <span className="menu-cursor">▶</span> {fileTooLarge ? "PDF TOO LARGE" : "GENERATE QUIZ"}
             </button>
           </div>
 

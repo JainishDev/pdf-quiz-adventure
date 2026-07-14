@@ -522,6 +522,28 @@ body {
 .dropzone.dragging { background: var(--gb-yellow); border-color: var(--gb-red); color: #241a1a; }
 [data-theme="night"] .dropzone { box-shadow: var(--gb-glow-soft); border-color: #8a5fd6; }
 [data-theme="night"] .dropzone:hover { box-shadow: 0 0 16px 2px rgba(224, 73, 143, 0.5); }
+.file-picked {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  min-width: 0;
+}
+.file-name {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.file-meta,
+.file-change {
+  display: block;
+  font-size: 8px;
+  line-height: 1.6;
+}
+.file-meta { opacity: 0.82; }
+.file-meta.good { color: var(--gb-green); }
+.file-meta.bad { color: var(--gb-red); }
+.file-change { opacity: 0.72; }
 
 /* ── Pokeball ───────────────────────────────────────────────────────────────── */
 .pokeball {
