@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <rect width="32" height="32" fill="none"/>
+  <!-- outer ring -->
+  <path fill="#1a2b3c" d="M12 4h8v2h4v2h2v4h2v8h-2v4h-2v2h-4v2h-8v-2h-4v-2H6v-4H4v-8h2V8h2V6h4z"/>
+  <!-- red top -->
+  <path fill="#d94040" d="M12 6h8v2h4v2h2v4H6v-4h2V8h4z"/>
+  <!-- white bottom -->
+  <path fill="#f8f0d8" d="M6 16h20v4h-2v2h-4v2h-8v-2H8v-2H6z"/>
+  <!-- center band -->
+  <rect x="6" y="15" width="20" height="3" fill="#1a2b3c"/>
+  <!-- button outer -->
+  <rect x="12" y="12" width="8" height="8" fill="#1a2b3c"/>
+  <!-- button inner -->
+  <rect x="14" y="14" width="4" height="4" fill="#f8f0d8"/>
+</svg>
