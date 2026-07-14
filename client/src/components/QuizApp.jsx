@@ -88,6 +88,21 @@ function getPlayerId() {
   return id;
 }
 
+async function readApiJson(res) {
+  const raw = await res.text();
+  let data = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    const preview = raw.replace(/\s+/g, " ").trim().slice(0, 140);
+    throw new Error(preview || `Server returned ${res.status} ${res.statusText}`);
+  }
+  if (!res.ok) {
+    throw new Error(data.error || `Server returned ${res.status} ${res.statusText}`);
+  }
+  return data;
+}
+
 // Local-only fallback board, used when the server is unreachable/not configured yet
 function loadLocalLeaderboard() {
   return ls.get(LEADERBOARD_KEY, []);
@@ -108,8 +123,7 @@ function saveLocalLeaderboardEntry(name, score, total, xp, title, modifierPenalt
 async function loadLeaderboard() {
   try {
     const res = await fetch(`${API_BASE}/api/leaderboard?limit=20`);
-    if (!res.ok) throw new Error("bad response");
-    const data = await res.json();
+    const data = await readApiJson(res);
     return data.leaderboard || [];
   } catch {
     return loadLocalLeaderboard(); // offline / server not set up yet
@@ -124,8 +138,7 @@ async function saveLeaderboardEntry(name, score, total, xp, title, modifierPenal
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ playerId, name, score, total, xp, title, modifierPenalty }),
     });
-    if (!res.ok) throw new Error("bad response");
-    const data = await res.json();
+    const data = await readApiJson(res);
     return data.leaderboard || [];
   } catch {
     return saveLocalLeaderboardEntry(name, score, total, xp, title, modifierPenalty); // offline fallback
@@ -854,9 +867,7 @@ export default function QuizApp() {
         body: formData,
         signal: generateAbortRef.current.signal,
       });
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || "Failed to generate quiz");
+      const data = await readApiJson(res);
       if (cancelledRef.current) return;
 
       setLoadingPct(100);
