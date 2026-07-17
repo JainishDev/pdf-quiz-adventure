@@ -23,6 +23,8 @@ generator with a **zero-dependency rule-based fallback** (so it never fully brea
 
 **🔗 Live Application:** https://quizadventure.vercel.app/
 
+**🎥 Video Tutorial:** https://youtube.be/ntT0iSZEUW4
+
 ---
 
 ### 🎯 Project Overview
